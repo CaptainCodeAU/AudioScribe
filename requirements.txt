@@ -1,0 +1,5 @@
+openai==1.41.0
+python-dotenv==1.0.0
+httpx==0.25.2
+rich==13.7.0
+pydub==0.25.1
