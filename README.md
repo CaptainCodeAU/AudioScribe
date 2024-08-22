@@ -405,7 +405,3 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 - [python-dotenv](https://github.com/theskumar/python-dotenv) for environment variable management
 - [Rich](https://github.com/Textualize/rich) for beautiful terminal formatting
 - [httpx](https://www.python-httpx.org/) for improved HTTP client functionality
-
-## Contact
-
-If you have any questions or feedback, please open an issue in this repository or contact the project maintainer.
