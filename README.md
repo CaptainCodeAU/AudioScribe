@@ -8,7 +8,7 @@ Transform your audio files into clear, coherent text with AudioScribe. Leveragin
 - Process all audio files in the `data/original` directory
 - Secure API key management using environment variables
 - Save transcription results in JSON and TXT formats
-- Clean up transcriptions using GPT-3.5-turbo for better coherence
+- Clean up transcriptions using gpt-4o-mini for better coherence
 - Visual progress indicators and colored console outputzo
 - Detailed error handling and logging
 - Automatic splitting of large audio files
@@ -72,7 +72,7 @@ Before you begin, ensure you have met the following requirements:
    d. A progress bar is displayed during the transcription process.
    e. The API transcribes the audio and returns the result in a detailed JSON format.
    f. The script saves the transcribed text and additional information in JSON and TXT formats.
-   g. The script then uses GPT-3.5-turbo to clean up the transcription and save it as a separate file.
+   g. The script then uses gpt-4o-mini to clean up the transcription and save it as a separate file.
 4. If there are existing transcription files without cleaned versions, the script processes them to create cleaned versions.
 5. The script skips creating clean versions for files that already have them.
 6. Detailed output, including a transcription summary, is displayed in the console.
@@ -155,7 +155,7 @@ sequenceDiagram
     participant Script
     participant OpenAIClient
     participant WhisperAPI
-    participant GPT3.5TurboAPI
+    participant GPT4oMiniAPI
 
     Script->>OpenAIClient: Initialize client
     Script->>OpenAIClient: Send audio file
@@ -164,8 +164,8 @@ sequenceDiagram
     OpenAIClient-->>Script: Return transcription
     Script->>Script: Save transcription
     Script->>OpenAIClient: Send transcription for cleaning
-    OpenAIClient->>GPT3.5TurboAPI: Clean transcription
-    GPT3.5TurboAPI-->>OpenAIClient: Return cleaned text
+    OpenAIClient->>GPT4oMiniAPI: Clean transcription
+    GPT4oMiniAPI-->>OpenAIClient: Return cleaned text
     OpenAIClient-->>Script: Return cleaned text
     Script->>Script: Save cleaned transcription
 ```
@@ -306,7 +306,7 @@ def clean_transcription(client: OpenAI, input_file: Path):
         prompt = f"Please clean up the following transcription to make the sentences more coherent, while preserving the original meaning:\n\n{content}"
 
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that cleans up transcriptions."},
                 {"role": "user", "content": prompt}
@@ -328,7 +328,7 @@ def clean_transcription(client: OpenAI, input_file: Path):
         raise
 ```
 
-This function uses GPT-3.5-turbo to clean up the transcription and make it more coherent. It now checks if a clean version already exists before processing.
+This function uses gpt-4o-mini to clean up the transcription and make it more coherent. It now checks if a clean version already exists before processing.
 
 ### Main Execution
 
@@ -401,7 +401,7 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 ## Acknowledgements
 
-- [OpenAI](https://www.openai.com) for providing the Whisper model and GPT-3.5-turbo API
+- [OpenAI](https://www.openai.com) for providing the Whisper model and gpt-4o-mini API
 - [python-dotenv](https://github.com/theskumar/python-dotenv) for environment variable management
 - [Rich](https://github.com/Textualize/rich) for beautiful terminal formatting
 - [httpx](https://www.python-httpx.org/) for improved HTTP client functionality

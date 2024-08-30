@@ -226,7 +226,7 @@ def clean_transcription(client: OpenAI, input_file: Path):
         prompt = f"Remove redundant phrases and make the sentences coherent. Do not summarise the content in any way! Do not miss any point.:\n\n{content}"
 
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
@@ -435,7 +435,9 @@ def main():
         return
 
     # Process all mp3 and wav files in the original directory
-    audio_files = list(ORIGINAL_AUDIO_DIR.glob("*.mp3")) + list(ORIGINAL_AUDIO_DIR.glob("*.wav"))
+    audio_files = list(ORIGINAL_AUDIO_DIR.glob("*.mp3")) + list(
+        ORIGINAL_AUDIO_DIR.glob("*.wav")
+    )
     console.print(
         f"[bold cyan]Found {len(audio_files)} audio files to process.[/bold cyan]"
     )
