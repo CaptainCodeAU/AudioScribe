@@ -11,6 +11,7 @@ import httpx
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress
+import time
 
 # Setup logging
 logging.basicConfig(
@@ -60,8 +61,8 @@ def get_openai_client():
     try:
         return OpenAI(
             api_key=os.environ.get("OPENAI_API_KEY"),
-            max_retries=3,
-            timeout=httpx.Timeout(300.0, read=60.0, write=10.0, connect=3.0),
+            max_retries=5,
+            timeout=httpx.Timeout(600.0, read=300.0, write=10.0, connect=5.0),
         )
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {e}")
@@ -133,9 +134,41 @@ def split_audio(
     return split_files
 
 
+def transcribe_audio_chunk(client: OpenAI, file_path: Path, retries: int = 5) -> Transcription:
+    """
+    Transcribe an audio chunk using OpenAI's Whisper model with retry logic.
+
+    Args:
+        client (OpenAI): An initialized OpenAI client object.
+        file_path (Path): Path to the audio file to transcribe.
+        retries (int): Number of retries for the transcription.
+
+    Returns:
+        Transcription: OpenAI Transcription object containing the transcription results.
+
+    Raises:
+        Exception: If transcription fails after all retries.
+    """
+    for attempt in range(retries):
+        try:
+            with file_path.open("rb") as audio_file:
+                response = client.audio.transcriptions.create(
+                    model="whisper-1", file=audio_file, response_format="verbose_json"
+                )
+            return response
+        except Exception as e:
+            if attempt < retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff
+                logger.warning(f"Transcription attempt {attempt + 1} failed. Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"Failed to transcribe audio after {retries} attempts: {e}")
+                raise
+
+
 def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
     """
-    Transcribe an audio file using OpenAI's Whisper model.
+    Transcribe an audio file using OpenAI's Whisper model, with support for chunking.
 
     Args:
         client (OpenAI): An initialized OpenAI client object.
@@ -148,19 +181,32 @@ def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
         Exception: If transcription fails.
     """
     try:
-        with file_path.open("rb") as audio_file:
+        if file_path.stat().st_size > MAX_FILE_SIZE:
+            console.print(f"[bold yellow]File size exceeds 25MB. Splitting into chunks...[/bold yellow]")
+            chunks = split_audio(file_path)
+            transcriptions = []
+
             with Progress() as progress:
-                task = progress.add_task(
-                    f"[cyan]Transcribing {file_path.name}...", total=100
-                )
+                task = progress.add_task(f"[cyan]Transcribing {file_path.name}...", total=len(chunks))
 
-                response = client.audio.transcriptions.create(
-                    model="whisper-1", file=audio_file, response_format="verbose_json"
-                )
+                for chunk in chunks:
+                    chunk_transcription = transcribe_audio_chunk(client, chunk)
+                    transcriptions.append(chunk_transcription)
+                    progress.update(task, advance=1)
 
-                progress.update(task, advance=100)
-
-        return response
+            # Combine transcriptions
+            combined_transcription = Transcription(
+                text=" ".join(t.text for t in transcriptions),
+                segments=[seg for t in transcriptions for seg in t.segments],
+                language=transcriptions[0].language,
+            )
+            return combined_transcription
+        else:
+            with Progress() as progress:
+                task = progress.add_task(f"[cyan]Transcribing {file_path.name}...", total=1)
+                response = transcribe_audio_chunk(client, file_path)
+                progress.update(task, advance=1)
+            return response
     except Exception as e:
         logger.error(f"Failed to transcribe audio: {e}")
         raise
@@ -276,80 +322,29 @@ def process_audio_file(client: OpenAI, file_path: Path):
         console.print(f"[bold cyan]Existing clean version:[/bold cyan] {clean_file}")
         return
 
-    if file_path.stat().st_size > MAX_FILE_SIZE:
+    try:
+        console.print(f"[bold]Transcribing {file_path.name}...[/bold]")
+        transcription = transcribe_audio(client, file_path)
         console.print(
-            f"[bold yellow]File size of {file_path.name} exceeds the limit. Splitting the audio...[/bold yellow]"
-        )
-        with Progress() as progress:
-            task = progress.add_task("[cyan]Splitting audio...", total=100)
-            split_files = split_audio(
-                file_path,
-                max_size_mb=MAX_SPLIT_SIZE_MB,
-                max_duration=MAX_SPLIT_DURATION,
-            )
-            progress.update(task, advance=100)
-        console.print(
-            f"[bold green]Audio {file_path.name} split into {len(split_files)} parts.[/bold green]"
-        )
-    else:
-        split_files = [file_path]
-
-    for i, file in enumerate(split_files, start=1):
-        console.print(
-            f"\n[bold cyan]Processing part {i} of {len(split_files)}:[/bold cyan] {file.name}"
+            f"[bold green]Transcription of {file_path.name} completed successfully![/bold green]"
         )
 
-        # Check if transcription already exists for this part
-        base_filename = SPLIT_AUDIO_DIR / file.stem
-        txt_file = Path(f"{base_filename}.txt")
-        clean_file = Path(f"{base_filename}.clean.txt")
+        # Save transcription
+        json_file, txt_file = save_transcription(
+            transcription, str(base_filename)
+        )
+        console.print(
+            f"[bold green]Transcription saved for {file_path.name}[/bold green]"
+        )
 
-        console.print(f"[bold]Checking for existing files:[/bold]")
-        console.print(f"  Transcription file: {txt_file}")
-        console.print(f"  Clean file: {clean_file}")
+        # Clean the transcription
+        console.print(f"[bold]Cleaning transcription for {file_path.name}...[/bold]")
+        clean_transcription(client, txt_file)
 
-        if txt_file.exists() and clean_file.exists():
-            console.print(
-                f"[bold yellow]Skipping {file.name}:[/bold yellow] Transcription and clean version already exist."
-            )
-            continue
-
-        try:
-            if not txt_file.exists():
-                console.print(f"[bold]Transcribing {file.name}...[/bold]")
-                transcription = transcribe_audio(client, file)
-                console.print(
-                    f"[bold green]Transcription of {file.name} completed successfully![/bold green]"
-                )
-
-                # Save individual transcription for each split file
-                json_file, txt_file = save_transcription(
-                    transcription, str(base_filename)
-                )
-                console.print(
-                    f"[bold green]Individual transcription saved for {file.name}[/bold green]"
-                )
-            else:
-                console.print(
-                    f"[bold yellow]Transcription file already exists for {file.name}[/bold yellow]"
-                )
-
-            # Clean the transcription if clean version doesn't exist
-            if not clean_file.exists():
-                console.print(f"[bold]Cleaning transcription for {file.name}...[/bold]")
-                clean_transcription(client, txt_file)
-            else:
-                console.print(
-                    f"[bold yellow]Clean version already exists for {file.name}[/bold yellow]"
-                )
-
-        except Exception as e:
-            console.print(
-                f"[bold red]Processing of {file.name} failed:[/bold red] {str(e)}"
-            )
-            continue
-
-    console.print(f"[bold green]Finished processing {file_path.name}[/bold green]")
+    except Exception as e:
+        console.print(
+            f"[bold red]Processing of {file_path.name} failed:[/bold red] {str(e)}"
+        )
 
 
 def process_optional_text_files(client: OpenAI):
