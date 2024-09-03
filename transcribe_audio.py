@@ -190,9 +190,16 @@ def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
                 task = progress.add_task(f"[cyan]Transcribing {file_path.name}...", total=len(chunks))
 
                 for chunk in chunks:
-                    chunk_transcription = transcribe_audio_chunk(client, chunk)
-                    transcriptions.append(chunk_transcription)
-                    progress.update(task, advance=1)
+                    try:
+                        chunk_transcription = transcribe_audio_chunk(client, chunk)
+                        transcriptions.append(chunk_transcription)
+                    except Exception as e:
+                        logger.error(f"Failed to transcribe chunk {chunk}: {e}")
+                    finally:
+                        progress.update(task, advance=1)
+
+            if not transcriptions:
+                raise Exception("All chunks failed to transcribe")
 
             # Combine transcriptions
             combined_transcription = Transcription(
