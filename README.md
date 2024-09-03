@@ -96,6 +96,7 @@ Before you begin, ensure you have met the following requirements:
 - `<filename>.txt`: Plain text output file containing the transcribed text
 - `<filename>.clean.txt`: Cleaned up version of the transcription for better coherence
 
+
 ---
 ---
 
@@ -218,8 +219,21 @@ The script includes comprehensive error handling:
   - If a chunk fails to transcribe, the script logs the error and continues with the next chunk
   - The script ensures at least one chunk is successfully transcribed before combining results
   - If all chunks fail, an informative exception is raised
+- Chunk size verification to prevent processing chunks larger than the API limit
+- Detailed logging of chunk transcription attempts and results
 
 Each error is logged and displayed to the user with appropriate context.
+
+## Retry Mechanism
+
+The script implements a robust retry mechanism to handle temporary failures:
+
+- The entire file transcription process can be retried up to 3 times
+- Each chunk transcription attempt uses exponential backoff for retries
+- A delay is added between chunk transcriptions to avoid rate limiting issues
+- If all retries fail, the script raises an informative exception and moves on to the next file
+
+This retry mechanism significantly improves the script's resilience to temporary network issues or API failures.
 
 ## Visual Output
 
@@ -250,6 +264,7 @@ If you encounter issues:
 4. Check the console output and log files for any error messages.
 5. Ensure that the ffmpeg and ffprobe paths are correctly set in the script.
 6. For large files, make sure you have enough disk space for temporary split files.
+7. If you're experiencing frequent failures, try adjusting the retry settings or adding longer delays between API calls.
 
 ## Contributing
 

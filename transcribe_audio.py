@@ -180,43 +180,61 @@ def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
     Raises:
         Exception: If transcription fails.
     """
-    try:
-        if file_path.stat().st_size > MAX_FILE_SIZE:
-            console.print(f"[bold yellow]File size exceeds 25MB. Splitting into chunks...[/bold yellow]")
-            chunks = split_audio(file_path)
-            transcriptions = []
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            if file_path.stat().st_size > MAX_FILE_SIZE:
+                console.print(f"[bold yellow]File size exceeds 25MB. Splitting into chunks...[/bold yellow]")
+                chunks = split_audio(file_path)
+                transcriptions = []
 
-            with Progress() as progress:
-                task = progress.add_task(f"[cyan]Transcribing {file_path.name}...", total=len(chunks))
+                with Progress() as progress:
+                    task = progress.add_task(f"[cyan]Transcribing {file_path.name}...", total=len(chunks))
 
-                for chunk in chunks:
-                    try:
-                        chunk_transcription = transcribe_audio_chunk(client, chunk)
-                        transcriptions.append(chunk_transcription)
-                    except Exception as e:
-                        logger.error(f"Failed to transcribe chunk {chunk}: {e}")
-                    finally:
-                        progress.update(task, advance=1)
+                    for i, chunk in enumerate(chunks):
+                        try:
+                            chunk_size = chunk.stat().st_size
+                            logger.info(f"Transcribing chunk {i+1}/{len(chunks)}: {chunk.name} (Size: {chunk_size/1024/1024:.2f} MB)")
+                            
+                            if chunk_size > MAX_FILE_SIZE:
+                                logger.error(f"Chunk {chunk.name} exceeds maximum size of 25MB. Skipping.")
+                                continue
 
-            if not transcriptions:
-                raise Exception("All chunks failed to transcribe")
+                            chunk_transcription = transcribe_audio_chunk(client, chunk)
+                            transcriptions.append(chunk_transcription)
+                            logger.info(f"Successfully transcribed chunk {i+1}/{len(chunks)}: {chunk.name}")
+                        except Exception as e:
+                            logger.error(f"Failed to transcribe chunk {chunk}: {e}")
+                        finally:
+                            progress.update(task, advance=1)
+                        
+                        # Add a delay between chunk transcriptions
+                        time.sleep(2)
 
-            # Combine transcriptions
-            combined_transcription = Transcription(
-                text=" ".join(t.text for t in transcriptions),
-                segments=[seg for t in transcriptions for seg in t.segments],
-                language=transcriptions[0].language,
-            )
-            return combined_transcription
-        else:
-            with Progress() as progress:
-                task = progress.add_task(f"[cyan]Transcribing {file_path.name}...", total=1)
-                response = transcribe_audio_chunk(client, file_path)
-                progress.update(task, advance=1)
-            return response
-    except Exception as e:
-        logger.error(f"Failed to transcribe audio: {e}")
-        raise
+                if not transcriptions:
+                    raise Exception("All chunks failed to transcribe")
+
+                # Combine transcriptions
+                combined_transcription = Transcription(
+                    text=" ".join(t.text for t in transcriptions),
+                    segments=[seg for t in transcriptions for seg in t.segments],
+                    language=transcriptions[0].language,
+                )
+                return combined_transcription
+            else:
+                with Progress() as progress:
+                    task = progress.add_task(f"[cyan]Transcribing {file_path.name}...", total=1)
+                    response = transcribe_audio_chunk(client, file_path)
+                    progress.update(task, advance=1)
+                return response
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff
+                logger.warning(f"Transcription attempt {attempt + 1} failed. Retrying entire file in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"Failed to transcribe audio after {max_retries} attempts: {e}")
+                raise
 
 
 def save_transcription(transcription: Transcription, base_filename: str):
