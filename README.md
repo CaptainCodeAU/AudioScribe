@@ -213,6 +213,11 @@ The script includes comprehensive error handling:
 - File saving errors
 - Audio splitting errors
 - Transcription cleaning errors
+- Improved handling of split file transcription failures:
+  - Each chunk is now processed independently
+  - If a chunk fails to transcribe, the script logs the error and continues with the next chunk
+  - The script ensures at least one chunk is successfully transcribed before combining results
+  - If all chunks fail, an informative exception is raised
 
 Each error is logged and displayed to the user with appropriate context.
 
