@@ -184,3 +184,5 @@ docs/docs/templates
 prof
 virtualenv/
 *.mp3
+/data/original/*.txt
+/data/original/*.json
