@@ -9,9 +9,10 @@ Transform your audio files into clear, coherent text with AudioScribe. Leveragin
 - Secure API key management using environment variables
 - Save transcription results in JSON and TXT formats
 - Clean up transcriptions using gpt-4o-mini for better coherence
-- Visual progress indicators and colored console outputzo
+- Visual progress indicators and colored console output
 - Detailed error handling and logging
-- Automatic splitting of large audio files
+- Efficient handling of large audio files with automatic chunking
+- Retry logic with exponential backoff for improved reliability
 - Support for custom ffmpeg and ffprobe paths
 - Skip processing of already transcribed files and existing clean versions
 
@@ -52,27 +53,29 @@ Before you begin, ensure you have met the following requirements:
    python transcribe_audio.py
    ```
 
-3. The transcribed text and additional information will be saved in two formats for each audio file:
+3. The transcribed text and additional information will be saved in three formats for each audio file:
    - `<filename>.json`: Detailed JSON output with all transcription information
    - `<filename>.txt`: Plain text transcription
    - `<filename>.clean.txt`: Cleaned up version of the transcription for better coherence
 
-4. If an audio file is split, individual transcriptions for each split will be saved in the `data/splits` directory.
+4. For large audio files (>25MB), the script will automatically split them into smaller chunks for processing.
 
-5. Detailed output will be displayed in the console.
+5. Detailed output, including progress information, will be displayed in the console.
 
 ## How it works
 
-1. The script initializes the OpenAI client with proper error handling and timeout configurations.
+1. The script initializes the OpenAI client with proper error handling and extended timeout configurations.
 2. It scans the `data/original` directory for MP3 and WAV files.
 3. For each audio file:
-   a. It checks if part files already exist. If they do, it skips processing this file.
-   b. If the file is too large, it's automatically split into smaller chunks and saved in the `data/splits` directory.
+   a. It checks if the file has already been processed. If so, it skips to the next file.
+   b. If the file is larger than 25MB, it's automatically split into smaller chunks.
    c. Each chunk (or the whole file if it's small enough) is sent to the OpenAI API for transcription using the Whisper model.
-   d. A progress bar is displayed during the transcription process.
-   e. The API transcribes the audio and returns the result in a detailed JSON format.
-   f. The script saves the transcribed text and additional information in JSON and TXT formats.
-   g. The script then uses gpt-4o-mini to clean up the transcription and save it as a separate file.
+   d. The script uses retry logic with exponential backoff to handle potential temporary failures.
+   e. A progress bar is displayed during the transcription process, updating for each chunk in large files.
+   f. The API transcribes the audio and returns the result in a detailed JSON format.
+   g. For large files, the script combines the transcriptions from all chunks.
+   h. The script saves the transcribed text and additional information in JSON and TXT formats.
+   i. The script then uses gpt-4o-mini to clean up the transcription and save it as a separate file.
 4. If there are existing transcription files without cleaned versions, the script processes them to create cleaned versions.
 5. The script skips creating clean versions for files that already have them.
 6. Detailed output, including a transcription summary, is displayed in the console.
@@ -83,10 +86,11 @@ Before you begin, ensure you have met the following requirements:
 - `requirements.txt`: List of Python package dependencies
 - `.env`: File to store the OpenAI API key (not included in the repository)
 - `data/original/`: Directory containing input audio files (MP3 or WAV)
-- `data/splits/`: Directory containing split audio files and their individual transcriptions
+- `data/splits/`: Directory containing split audio files (for large files)
 - `<filename>.json`: JSON output file containing detailed transcription information
 - `<filename>.txt`: Plain text output file containing the transcribed text
 - `<filename>.clean.txt`: Cleaned up version of the transcription for better coherence
+
 
 ---
 ---
@@ -369,8 +373,8 @@ The script uses the Rich library to provide a visually appealing console output:
 
 You can customize the script by modifying the following:
 
-- Change the `model` parameter in the `transcribe_audio` function to use a different OpenAI model.
-- Adjust the timeout settings in the `get_openai_client` function to accommodate larger audio files.
+- Change the `model` parameter in the `transcribe_audio_chunk` function to use a different OpenAI model.
+- Adjust the timeout settings in the `get_openai_client` function to accommodate your specific needs.
 - Modify the output formats or add additional formats in the `save_transcription` function.
 - Adjust the `MAX_SPLIT_SIZE_MB` and `MAX_SPLIT_DURATION` constants to change the thresholds for splitting audio files.
 - Modify the cleaning prompt or model in the `clean_transcription` function to adjust the coherence improvement process.
@@ -384,6 +388,7 @@ If you encounter issues:
 3. Verify that you have sufficient credits in your OpenAI account.
 4. Check the console output and log files for any error messages.
 5. Ensure that the ffmpeg and ffprobe paths are correctly set in the script.
+6. For large files, make sure you have enough disk space for temporary split files.
 
 ## Contributing
 
@@ -405,3 +410,4 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 - [python-dotenv](https://github.com/theskumar/python-dotenv) for environment variable management
 - [Rich](https://github.com/Textualize/rich) for beautiful terminal formatting
 - [httpx](https://www.python-httpx.org/) for improved HTTP client functionality
+- [FFmpeg](https://ffmpeg.org/) for audio file manipulation
