@@ -12,10 +12,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress
 import time
+from openai import AuthenticationError, RateLimitError, APIError
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.DEBUG,  # Changed to DEBUG for more detailed logging
+    format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ load_dotenv()
 console = Console()
 
 # Constants for audio splitting and processing
-MAX_SPLIT_SIZE_MB = 10  # Maximum size of each split in MB
+MAX_SPLIT_SIZE_MB = 5  # Reduced from 10 MB to 5 MB
 MAX_SPLIT_DURATION = 600  # Maximum duration of each split in seconds (10 minutes)
 MAX_FILE_SIZE = 25 * 1024 * 1024  # Maximum file size for OpenAI API (25 MB)
 
@@ -66,6 +68,27 @@ def get_openai_client():
         )
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {e}")
+        raise
+
+
+def check_api_key_validity(client: OpenAI):
+    """
+    Check if the OpenAI API key is valid.
+
+    Args:
+        client (OpenAI): An initialized OpenAI client object.
+
+    Raises:
+        AuthenticationError: If the API key is invalid.
+    """
+    try:
+        # Attempt a simple API call to check key validity
+        client.models.list()
+    except AuthenticationError as e:
+        logger.error(f"Invalid API key: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Error checking API key validity: {e}")
         raise
 
 
@@ -151,19 +174,42 @@ def transcribe_audio_chunk(client: OpenAI, file_path: Path, retries: int = 5) ->
     """
     for attempt in range(retries):
         try:
+            logger.debug(f"Attempting to transcribe chunk: {file_path}")
             with file_path.open("rb") as audio_file:
                 response = client.audio.transcriptions.create(
                     model="whisper-1", file=audio_file, response_format="verbose_json"
                 )
+            logger.debug(f"Successfully transcribed chunk: {file_path}")
             return response
-        except Exception as e:
+        except AuthenticationError as e:
+            logger.error(f"Authentication error while transcribing {file_path}: {e}")
+            raise  # Immediately raise as this is a configuration issue
+        except RateLimitError as e:
+            logger.warning(f"Rate limit exceeded while transcribing {file_path}: {e}")
             if attempt < retries - 1:
-                wait_time = 2 ** attempt  # Exponential backoff
-                logger.warning(f"Transcription attempt {attempt + 1} failed. Retrying in {wait_time} seconds...")
+                wait_time = 60 * (2 ** attempt)  # Longer exponential backoff
+                logger.info(f"Waiting for {wait_time} seconds before retrying...")
                 time.sleep(wait_time)
             else:
-                logger.error(f"Failed to transcribe audio after {retries} attempts: {e}")
                 raise
+        except APIError as e:
+            logger.error(f"API error while transcribing {file_path}: {e}")
+            if attempt < retries - 1:
+                wait_time = 10 * (2 ** attempt)
+                logger.info(f"Waiting for {wait_time} seconds before retrying...")
+                time.sleep(wait_time)
+            else:
+                raise
+        except Exception as e:
+            logger.error(f"Unexpected error while transcribing {file_path}: {e}")
+            if attempt < retries - 1:
+                wait_time = 5 * (2 ** attempt)
+                logger.info(f"Waiting for {wait_time} seconds before retrying...")
+                time.sleep(wait_time)
+            else:
+                raise
+    
+    raise Exception(f"Failed to transcribe audio chunk {file_path} after {retries} attempts")
 
 
 def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
@@ -187,6 +233,7 @@ def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
                 console.print(f"[bold yellow]File size exceeds 25MB. Splitting into chunks...[/bold yellow]")
                 chunks = split_audio(file_path)
                 transcriptions = []
+                failed_chunks = []
 
                 with Progress() as progress:
                     task = progress.add_task(f"[cyan]Transcribing {file_path.name}...", total=len(chunks))
@@ -198,6 +245,7 @@ def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
                             
                             if chunk_size > MAX_FILE_SIZE:
                                 logger.error(f"Chunk {chunk.name} exceeds maximum size of 25MB. Skipping.")
+                                failed_chunks.append(chunk)
                                 continue
 
                             chunk_transcription = transcribe_audio_chunk(client, chunk)
@@ -205,14 +253,18 @@ def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
                             logger.info(f"Successfully transcribed chunk {i+1}/{len(chunks)}: {chunk.name}")
                         except Exception as e:
                             logger.error(f"Failed to transcribe chunk {chunk}: {e}")
+                            failed_chunks.append(chunk)
                         finally:
                             progress.update(task, advance=1)
                         
-                        # Add a delay between chunk transcriptions
-                        time.sleep(2)
+                        # Add a longer delay between chunk transcriptions
+                        time.sleep(10)
 
                 if not transcriptions:
                     raise Exception("All chunks failed to transcribe")
+
+                if failed_chunks:
+                    logger.warning(f"Failed to transcribe {len(failed_chunks)} chunks: {', '.join(str(c) for c in failed_chunks)}")
 
                 # Combine transcriptions
                 combined_transcription = Transcription(
@@ -229,7 +281,7 @@ def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
                 return response
         except Exception as e:
             if attempt < max_retries - 1:
-                wait_time = 2 ** attempt  # Exponential backoff
+                wait_time = 30 * (2 ** attempt)  # Longer exponential backoff
                 logger.warning(f"Transcription attempt {attempt + 1} failed. Retrying entire file in {wait_time} seconds...")
                 time.sleep(wait_time)
             else:
@@ -448,6 +500,7 @@ def main():
 
     try:
         client = get_openai_client()
+        check_api_key_validity(client)
         logger.info("OpenAI client initialized successfully")
         console.print("[bold green]OpenAI client initialized successfully[/bold green]")
     except Exception as e:

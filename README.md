@@ -17,6 +17,7 @@ Transform your audio files into clear, coherent text with AudioScribe. Leveragin
 - Support for custom ffmpeg and ffprobe paths
 - Skip processing of already transcribed files and existing clean versions
 - Process files from both original and splits directories sequentially
+- API key validation before processing
 
 ## Prerequisites
 
@@ -67,8 +68,9 @@ Before you begin, ensure you have met the following requirements:
 ## How it works
 
 1. The script initializes the OpenAI client with proper error handling and extended timeout configurations.
-2. It scans the `data/original` directory for MP3 and WAV files.
-3. For each audio file in the original directory:
+2. It validates the OpenAI API key before proceeding with any transcriptions.
+3. It scans the `data/original` directory for MP3 and WAV files.
+4. For each audio file in the original directory:
    a. It checks if the file has already been processed. If so, it skips to the next file.
    b. If the file is larger than 25MB, it's automatically split into smaller chunks and saved in the `data/splits` directory.
    c. Each chunk (or the whole file if it's small enough) is sent to the OpenAI API for transcription using the Whisper model.
@@ -78,11 +80,11 @@ Before you begin, ensure you have met the following requirements:
    g. For large files, the script combines the transcriptions from all chunks.
    h. The script saves the transcribed text and additional information in JSON and TXT formats.
    i. The script then uses gpt-4o-mini to clean up the transcription and save it as a separate file.
-4. After processing all files in the original directory, the script processes any remaining MP3 files in the `data/splits` directory.
-5. The script then processes any text files in the `data/splits` directory, cleaning up transcriptions that don't have a clean version yet.
-6. Finally, it processes optional text files in the `data/optional_text` directory.
-7. The script skips creating clean versions for files that already have them.
-8. Detailed output, including a transcription summary, is displayed in the console throughout the process.
+5. After processing all files in the original directory, the script processes any remaining MP3 files in the `data/splits` directory.
+6. The script then processes any text files in the `data/splits` directory, cleaning up transcriptions that don't have a clean version yet.
+7. Finally, it processes optional text files in the `data/optional_text` directory.
+8. The script skips creating clean versions for files that already have them.
+9. Detailed output, including a transcription summary, is displayed in the console throughout the process.
 
 ## File structure
 
@@ -172,6 +174,7 @@ sequenceDiagram
     participant GPT4oMiniAPI
 
     Script->>OpenAIClient: Initialize client
+    Script->>OpenAIClient: Validate API key
     loop For each audio chunk
         Script->>OpenAIClient: Send audio chunk
         OpenAIClient->>WhisperAPI: Transcribe audio
@@ -196,19 +199,29 @@ These charts provide a visual representation of the project structure, workflow,
 The `main()` function orchestrates the entire process, including:
 
 1. Initializing the OpenAI client
-2. Processing all MP3 and WAV files in the `data/original` directory
-3. Splitting audio files if necessary
-4. Transcribing the audio files
-5. Saving transcriptions in JSON and TXT formats
-6. Cleaning up transcriptions and saving them as separate files
-7. Processing existing transcriptions without clean versions
-8. Skipping files that have already been processed or have existing clean versions
+2. Validating the OpenAI API key
+3. Processing all MP3 and WAV files in the `data/original` directory
+4. Splitting audio files if necessary
+5. Transcribing the audio files
+6. Saving transcriptions in JSON and TXT formats
+7. Cleaning up transcriptions and saving them as separate files
+8. Processing existing transcriptions without clean versions
+9. Skipping files that have already been processed or have existing clean versions
+
+## API Key Validation
+
+The script now includes an API key validation step:
+
+- Before processing any files, the script attempts to list available models using the provided API key.
+- If the API key is invalid or there are any authentication issues, the script will raise an error and stop execution.
+- This ensures that potential API key issues are caught early in the process, saving time and preventing unnecessary processing attempts.
 
 ## Error Handling
 
 The script includes comprehensive error handling:
 
 - Client initialization errors
+- API key validation errors
 - File not found errors
 - Transcription process errors
 - File saving errors
@@ -221,8 +234,12 @@ The script includes comprehensive error handling:
   - If all chunks fail, an informative exception is raised
 - Chunk size verification to prevent processing chunks larger than the API limit
 - Detailed logging of chunk transcription attempts and results
+- Specific handling for OpenAI API errors:
+  - Authentication errors
+  - Rate limit errors
+  - General API errors
 
-Each error is logged and displayed to the user with appropriate context.
+Each error is logged and displayed to the user with appropriate context, including specific error messages from the OpenAI API when available.
 
 ## Retry Mechanism
 
@@ -230,10 +247,14 @@ The script implements a robust retry mechanism to handle temporary failures:
 
 - The entire file transcription process can be retried up to 3 times
 - Each chunk transcription attempt uses exponential backoff for retries
-- A delay is added between chunk transcriptions to avoid rate limiting issues
+- Different wait times are implemented based on the type of error:
+  - Longer waits for rate limit errors (60 seconds base, doubling each retry)
+  - Medium waits for general API errors (10 seconds base, doubling each retry)
+  - Shorter waits for unexpected errors (5 seconds base, doubling each retry)
+- A delay of 10 seconds is added between chunk transcriptions to avoid rate limiting issues
 - If all retries fail, the script raises an informative exception and moves on to the next file
 
-This retry mechanism significantly improves the script's resilience to temporary network issues or API failures.
+This retry mechanism significantly improves the script's resilience to temporary network issues, API failures, and rate limiting.
 
 ## Visual Output
 
@@ -253,18 +274,20 @@ You can customize the script by modifying the following:
 - Modify the output formats or add additional formats in the `save_transcription` function.
 - Adjust the `MAX_SPLIT_SIZE_MB` and `MAX_SPLIT_DURATION` constants to change the thresholds for splitting audio files.
 - Modify the cleaning prompt or model in the `clean_transcription` function to adjust the coherence improvement process.
+- Adjust retry attempts and wait times in the `transcribe_audio_chunk` and `transcribe_audio` functions to fine-tune the retry mechanism.
 
 ## Troubleshooting
 
 If you encounter issues:
 
-1. Ensure your OpenAI API key is correctly set in the `.env` file.
+1. Ensure your OpenAI API key is correctly set in the `.env` file and is valid.
 2. Check that your input audio files are valid MP3 or WAV files and are placed in the `data/original` directory.
 3. Verify that you have sufficient credits in your OpenAI account.
-4. Check the console output and log files for any error messages.
+4. Check the console output and log files for any error messages. The script now provides more detailed error information, especially for API-related issues.
 5. Ensure that the ffmpeg and ffprobe paths are correctly set in the script.
 6. For large files, make sure you have enough disk space for temporary split files.
 7. If you're experiencing frequent failures, try adjusting the retry settings or adding longer delays between API calls.
+8. If you encounter persistent rate limit errors, you may need to reduce the frequency of API calls or contact OpenAI to increase your rate limits.
 
 ## Contributing
 
