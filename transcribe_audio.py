@@ -310,7 +310,7 @@ def process_audio_file(client: OpenAI, file_path: Path):
     console.print(f"\n[bold cyan]Processing file:[/bold cyan] {file_path}")
 
     # Check if transcription already exists for the original file
-    base_filename = SPLIT_AUDIO_DIR / file_path.stem
+    base_filename = file_path.parent / file_path.stem
     txt_file = Path(f"{base_filename}.txt")
     clean_file = Path(f"{base_filename}.clean.txt")
 
@@ -430,17 +430,26 @@ def main():
         return
 
     # Process all mp3 and wav files in the original directory
-    audio_files = list(ORIGINAL_AUDIO_DIR.glob("*.mp3")) + list(
+    original_audio_files = list(ORIGINAL_AUDIO_DIR.glob("*.mp3")) + list(
         ORIGINAL_AUDIO_DIR.glob("*.wav")
     )
     console.print(
-        f"[bold cyan]Found {len(audio_files)} audio files to process.[/bold cyan]"
+        f"[bold cyan]Found {len(original_audio_files)} audio files to process in the original directory.[/bold cyan]"
     )
 
-    for file in audio_files:
+    for file in original_audio_files:
         process_audio_file(client, file)
 
-    # Process split files
+    # Process any remaining mp3 files in the splits directory
+    split_audio_files = list(SPLIT_AUDIO_DIR.glob("*.mp3"))
+    console.print(
+        f"[bold cyan]Found {len(split_audio_files)} audio files to process in the splits directory.[/bold cyan]"
+    )
+
+    for file in split_audio_files:
+        process_audio_file(client, file)
+
+    # Process split files (text files)
     process_split_files(client)
 
     # Process optional text files
