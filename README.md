@@ -122,6 +122,8 @@ graph TD
     K --> M[.json files]
     K --> N[.txt files]
     K --> O[.clean.txt files]
+    A --> P[.gitignore]
+    A --> Q[LICENSE]
 ```
 
 ## Audio Processing Workflow
@@ -134,10 +136,13 @@ graph TD
     C --> D
     D --> E[Save JSON Transcription]
     D --> F[Save TXT Transcription]
-    E --> G[Clean Transcription]
+    E --> G{Clean Version Exists?}
     F --> G
-    G --> H[Save Clean TXT]
-    H --> I[End]
+    G -- No --> H[Clean Transcription]
+    G -- Yes --> I[Skip Cleaning]
+    H --> J[Save Clean TXT]
+    I --> K[End]
+    J --> K
 ```
 
 ## File Processing Decision Tree
@@ -146,10 +151,10 @@ graph TD
 graph TD
     A[Input File] --> B{Transcription Exists?}
     B -- Yes --> C{Clean Version Exists?}
-    B -- No --> D[Transcribe Audio]
+    B -- No --> D[Process Audio File]
     C -- Yes --> E[Skip Processing]
     C -- No --> F[Clean Transcription]
-    D --> G[Save Transcription]
+    D --> G[Transcribe and Save]
     G --> F
     F --> H[Save Clean Version]
     H --> I[End]
@@ -166,11 +171,14 @@ sequenceDiagram
     participant GPT4oMiniAPI
 
     Script->>OpenAIClient: Initialize client
-    Script->>OpenAIClient: Send audio file
-    OpenAIClient->>WhisperAPI: Transcribe audio
-    WhisperAPI-->>OpenAIClient: Return transcription
-    OpenAIClient-->>Script: Return transcription
-    Script->>Script: Save transcription
+    loop For each audio chunk
+        Script->>OpenAIClient: Send audio chunk
+        OpenAIClient->>WhisperAPI: Transcribe audio
+        WhisperAPI-->>OpenAIClient: Return transcription
+        OpenAIClient-->>Script: Return transcription
+    end
+    Script->>Script: Combine chunk transcriptions (if split)
+    Script->>Script: Save transcription (JSON & TXT)
     Script->>OpenAIClient: Send transcription for cleaning
     OpenAIClient->>GPT4oMiniAPI: Clean transcription
     GPT4oMiniAPI-->>OpenAIClient: Return cleaned text
