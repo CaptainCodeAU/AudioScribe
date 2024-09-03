@@ -6,6 +6,7 @@ Transform your audio files into clear, coherent text with AudioScribe. Leveragin
 
 - Transcribe MP3 and WAV audio files using OpenAI's Whisper model
 - Process all audio files in the `data/original` directory
+- Automatically handle split files in the `data/splits` directory
 - Secure API key management using environment variables
 - Save transcription results in JSON and TXT formats
 - Clean up transcriptions using gpt-4o-mini for better coherence
@@ -15,6 +16,7 @@ Transform your audio files into clear, coherent text with AudioScribe. Leveragin
 - Retry logic with exponential backoff for improved reliability
 - Support for custom ffmpeg and ffprobe paths
 - Skip processing of already transcribed files and existing clean versions
+- Process files from both original and splits directories sequentially
 
 ## Prerequisites
 
@@ -66,9 +68,9 @@ Before you begin, ensure you have met the following requirements:
 
 1. The script initializes the OpenAI client with proper error handling and extended timeout configurations.
 2. It scans the `data/original` directory for MP3 and WAV files.
-3. For each audio file:
+3. For each audio file in the original directory:
    a. It checks if the file has already been processed. If so, it skips to the next file.
-   b. If the file is larger than 25MB, it's automatically split into smaller chunks.
+   b. If the file is larger than 25MB, it's automatically split into smaller chunks and saved in the `data/splits` directory.
    c. Each chunk (or the whole file if it's small enough) is sent to the OpenAI API for transcription using the Whisper model.
    d. The script uses retry logic with exponential backoff to handle potential temporary failures.
    e. A progress bar is displayed during the transcription process, updating for each chunk in large files.
@@ -76,9 +78,11 @@ Before you begin, ensure you have met the following requirements:
    g. For large files, the script combines the transcriptions from all chunks.
    h. The script saves the transcribed text and additional information in JSON and TXT formats.
    i. The script then uses gpt-4o-mini to clean up the transcription and save it as a separate file.
-4. If there are existing transcription files without cleaned versions, the script processes them to create cleaned versions.
-5. The script skips creating clean versions for files that already have them.
-6. Detailed output, including a transcription summary, is displayed in the console.
+4. After processing all files in the original directory, the script processes any remaining MP3 files in the `data/splits` directory.
+5. The script then processes any text files in the `data/splits` directory, cleaning up transcriptions that don't have a clean version yet.
+6. Finally, it processes optional text files in the `data/optional_text` directory.
+7. The script skips creating clean versions for files that already have them.
+8. Detailed output, including a transcription summary, is displayed in the console throughout the process.
 
 ## File structure
 
@@ -87,16 +91,16 @@ Before you begin, ensure you have met the following requirements:
 - `.env`: File to store the OpenAI API key (not included in the repository)
 - `data/original/`: Directory containing input audio files (MP3 or WAV)
 - `data/splits/`: Directory containing split audio files (for large files)
+- `data/optional_text/`: Directory containing optional text files for processing
 - `<filename>.json`: JSON output file containing detailed transcription information
 - `<filename>.txt`: Plain text output file containing the transcribed text
 - `<filename>.clean.txt`: Cleaned up version of the transcription for better coherence
 
-
 ---
 ---
 
 
- # MP3 to Text Transcription with OpenAI - Charts
+# MP3 to Text Transcription with OpenAI - Charts
 
 This file contains mermaid charts explaining various aspects of the project.
 
@@ -176,163 +180,7 @@ sequenceDiagram
 
 These charts provide a visual representation of the project structure, workflow, decision-making process, and API interactions in the MP3 to Text Transcription project.
 
-## Detailed Script Breakdown
 
-### Imports and Setup
-
-```python
-import os
-import json
-import logging
-from pathlib import Path
-from dotenv import load_dotenv
-from openai import OpenAI
-from openai.types.audio import Transcription
-import httpx
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import Progress
-```
-
-These imports provide the necessary modules for file handling, API interaction, logging, and creating a rich console output.
-
-### Directory Configuration
-
-```python
-ORIGINAL_AUDIO_DIR = Path("./data/original")
-SPLIT_AUDIO_DIR = Path("./data/splits")
-
-ORIGINAL_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-SPLIT_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-```
-
-This section configures the directories for original and split audio files, creating them if they don't exist.
-
-### OpenAI Client Initialization
-
-```python
-def get_openai_client():
-    try:
-        return OpenAI(
-            api_key=os.environ.get("OPENAI_API_KEY"),
-            max_retries=3,
-            timeout=httpx.Timeout(300.0, read=60.0, write=10.0, connect=3.0),
-        )
-    except Exception as e:
-        logger.error(f"Failed to initialize OpenAI client: {e}")
-        raise
-```
-
-This function initializes the OpenAI client with proper error handling and timeout configurations.
-
-### Audio Splitting
-
-```python
-def split_audio(
-    file_path: Path,
-    max_size_mb: int = MAX_SPLIT_SIZE_MB,
-    max_duration: int = MAX_SPLIT_DURATION,
-):
-    output_template = SPLIT_AUDIO_DIR / f"{file_path.stem}_part%03d.mp3"
-
-    # ... (rest of the function)
-
-    return sorted(SPLIT_AUDIO_DIR.glob(f"{file_path.stem}_part*.mp3"))
-```
-
-This function splits large audio files into smaller chunks that can be processed by the OpenAI API and saves them in the `data/splits` directory.
-
-### Audio Transcription
-
-```python
-def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
-    try:
-        with file_path.open("rb") as audio_file:
-            with Progress() as progress:
-                task = progress.add_task(f"[cyan]Transcribing {file_path.name}...", total=100)
-
-                response = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    response_format="verbose_json"
-                )
-
-                progress.update(task, advance=100)
-
-        return response
-    except Exception as e:
-        logger.error(f"Failed to transcribe audio: {e}")
-        raise
-```
-
-This function handles the audio transcription process, including displaying a progress bar.
-
-### Saving Transcription
-
-```python
-def save_transcription(transcription: Transcription, base_filename: str):
-    try:
-        # Save JSON output
-        json_file = Path(f"{base_filename}.json")
-        with json_file.open("w") as f:
-            json.dump(transcription.model_dump(), f, indent=2)
-        console.print(f"[bold green]JSON file saved:[/bold green] {json_file}")
-
-        # Save TXT output
-        txt_file = Path(f"{base_filename}.txt")
-        with txt_file.open("w") as f:
-            f.write(transcription.text)
-        console.print(f"[bold green]TXT file saved:[/bold green] {txt_file}")
-
-        return json_file, txt_file
-    except Exception as e:
-        logger.error(f"Failed to save transcription: {e}")
-        raise
-```
-
-This function saves the transcription result in JSON and TXT formats.
-
-### Cleaning Transcription
-
-```python
-def clean_transcription(client: OpenAI, input_file: Path):
-    try:
-        output_file = input_file.with_suffix('.clean.txt')
-
-        # Check if clean file already exists
-        if output_file.exists():
-            console.print(f"[bold yellow]Clean version already exists for {input_file.name}. Skipping...[/bold yellow]")
-            return
-
-        with input_file.open("r") as f:
-            content = f.read()
-
-        prompt = f"Please clean up the following transcription to make the sentences more coherent, while preserving the original meaning:\n\n{content}"
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that cleans up transcriptions."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=4000,
-            n=1,
-            temperature=0.5,
-        )
-
-        cleaned_text = response.choices[0].message.content.strip()
-
-        with output_file.open("w") as f:
-            f.write(cleaned_text)
-
-        console.print(f"[bold green]Cleaned transcription saved:[/bold green] {output_file}")
-
-    except Exception as e:
-        logger.error(f"Failed to clean transcription: {e}")
-        raise
-```
-
-This function uses gpt-4o-mini to clean up the transcription and make it more coherent. It now checks if a clean version already exists before processing.
 
 ### Main Execution
 
