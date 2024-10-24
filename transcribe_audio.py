@@ -150,10 +150,23 @@ def split_audio(
     # Run the ffmpeg command to split the audio
     subprocess.run(cmd, check=True)
 
-    # Return list of created files
+    # Get list of created files
     split_files = sorted(SPLIT_AUDIO_DIR.glob(f"{file_path.stem}_part*.mp3"))
-    for split_file in split_files:
-        console.print(f"[bold magenta]Created split file:[/bold magenta] {split_file}")
+
+    # Verify splits were created successfully
+    if len(split_files) > 0:
+        for split_file in split_files:
+            console.print(f"[bold magenta]Created split file:[/bold magenta] {split_file}")
+
+        # Delete the original file after successful splitting
+        try:
+            file_path.unlink()
+            console.print(f"[bold yellow]Deleted original file:[/bold yellow] {file_path}")
+            logger.info(f"Deleted original file after splitting: {file_path}")
+        except Exception as e:
+            logger.error(f"Failed to delete original file {file_path}: {e}")
+            console.print(f"[bold red]Failed to delete original file:[/bold red] {file_path}")
+
     return split_files
 
 
@@ -208,7 +221,7 @@ def transcribe_audio_chunk(client: OpenAI, file_path: Path, retries: int = 5) ->
                 time.sleep(wait_time)
             else:
                 raise
-    
+
     raise Exception(f"Failed to transcribe audio chunk {file_path} after {retries} attempts")
 
 
@@ -242,7 +255,7 @@ def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
                         try:
                             chunk_size = chunk.stat().st_size
                             logger.info(f"Transcribing chunk {i+1}/{len(chunks)}: {chunk.name} (Size: {chunk_size/1024/1024:.2f} MB)")
-                            
+
                             if chunk_size > MAX_FILE_SIZE:
                                 logger.error(f"Chunk {chunk.name} exceeds maximum size of 25MB. Skipping.")
                                 failed_chunks.append(chunk)
@@ -256,7 +269,7 @@ def transcribe_audio(client: OpenAI, file_path: Path) -> Transcription:
                             failed_chunks.append(chunk)
                         finally:
                             progress.update(task, advance=1)
-                        
+
                         # Add a longer delay between chunk transcriptions
                         time.sleep(10)
 
