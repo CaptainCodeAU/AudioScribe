@@ -1,24 +1,21 @@
 # AudioScribe - Transcribe & Refine
 
-Transform your audio files into clear, coherent text with AudioScribe. Leveraging the power of OpenAI's Whisper model, AudioScribe offers seamless transcription of MP3 and WAV files with detailed logging, visual feedback, and error handling. Whether you're handling lengthy recordings or brief sound bites, AudioScribe splits, transcribes, and refines your audio with ease, ensuring that each transcription is as accurate and readable as possible. From detailed JSON outputs to clean text files, AudioScribe is your go-to tool for converting sound into script with precision.
+Transform your audio files into clear, coherent text with AudioScribe. Leveraging the power of OpenAI's Whisper model, AudioScribe offers seamless transcription of audio files with detailed logging, visual feedback, and error handling. Whether you're handling lengthy recordings or brief sound bites, AudioScribe splits, transcribes, and refines your audio with ease, ensuring that each transcription is as accurate and readable as possible.
 
 ## Features
 
 - Transcribe MP3 and WAV audio files using OpenAI's Whisper model
-- Process all audio files in the `data/original` directory
-- Automatically handle split files in the `data/splits` directory
-- Automatic cleanup of original files after successful splitting to prevent redundancy
+- Object-oriented architecture for better code organization and maintainability
+- Automatic handling of large files with smart splitting functionality
+- Rich console interface with progress indicators and colored output
+- Detailed error handling and logging with retry mechanisms
 - Secure API key management using environment variables
-- Save transcription results in JSON and TXT formats
-- Clean up transcriptions using gpt-4o-mini for better coherence
-- Visual progress indicators and colored console output
-- Detailed error handling and logging
-- Efficient handling of large audio files with automatic chunking
-- Retry logic with exponential backoff for improved reliability
+- Multiple output formats:
+  - JSON files with detailed transcription metadata
+  - Raw text transcriptions
+  - Cleaned and refined transcriptions using GPT-3.5-turbo
+- Skip processing of already transcribed files
 - Support for custom ffmpeg and ffprobe paths
-- Skip processing of already transcribed files and existing clean versions
-- Process files from both original and splits directories sequentially
-- API key validation before processing
 
 ## Prerequisites
 
@@ -32,8 +29,8 @@ Before you begin, ensure you have met the following requirements:
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/mp3-to-text-openai.git
-   cd mp3-to-text-openai
+   git clone https://github.com/yourusername/AudioScribe.git
+   cd AudioScribe
    ```
 
 2. Install the required packages:
@@ -46,7 +43,7 @@ Before you begin, ensure you have met the following requirements:
    OPENAI_API_KEY=your_api_key_here
    ```
 
-4. Update the `FFMPEG_PATH` and `FFPROBE_PATH` variables in the `transcribe_audio.py` script to point to your ffmpeg and ffprobe installations.
+4. Update the `FFMPEG_PATH` and `FFPROBE_PATH` variables in the `AudioConfig` class to point to your ffmpeg and ffprobe installations.
 
 ## Usage
 
@@ -100,7 +97,7 @@ Before you begin, ensure you have met the following requirements:
 - `.env`: File to store the OpenAI API key (not included in the repository)
 - `data/original/`: Directory containing input audio files (MP3 or WAV)
 - `data/splits/`: Directory containing split audio files (for large files)
-- `data/optional_text/`: Directory containing optional text files for processing
+- `data/transcripts/`: Directory containing transcription files
 - `<filename>.json`: JSON output file containing detailed transcription information
 - `<filename>.txt`: Plain text output file containing the transcribed text
 - `<filename>.clean.txt`: Cleaned up version of the transcription for better coherence
@@ -124,11 +121,10 @@ graph TD
     A --> E[data/]
     E --> F[original/]
     E --> G[splits/]
-    E --> H[optional_text/]
-    F --> I[Input MP3/WAV files]
+    E --> H[transcripts/]
+    F --> I[Input audio files]
     G --> J[Split audio files]
-    G --> K[Transcription files]
-    H --> L[Optional text files]
+    H --> K[Transcription outputs]
     K --> M[.json files]
     K --> N[.txt files]
     K --> O[.clean.txt files]
@@ -136,175 +132,125 @@ graph TD
     A --> Q[LICENSE]
 ```
 
-## Audio Processing Workflow
-
-```mermaid
-graph TD
-    A[Start] --> B{File > 25MB?}
-    B -- Yes --> C[Split Audio]
-    B -- No --> D[Transcribe Audio]
-    C --> D
-    D --> E[Save JSON Transcription]
-    D --> F[Save TXT Transcription]
-    E --> G{Clean Version Exists?}
-    F --> G
-    G -- No --> H[Clean Transcription]
-    G -- Yes --> I[Skip Cleaning]
-    H --> J[Save Clean TXT]
-    I --> K[End]
-    J --> K
-```
 
 ## File Processing Decision Tree
 
 ```mermaid
 graph TD
-    A[Input File] --> B{Transcription Exists?}
-    B -- Yes --> C{Clean Version Exists?}
-    B -- No --> D[Process Audio File]
-    C -- Yes --> E[Skip Processing]
-    C -- No --> F[Clean Transcription]
-    D --> G[Transcribe and Save]
-    G --> F
-    F --> H[Save Clean Version]
-    H --> I[End]
-    E --> I
+    A[Input Audio File] --> B{Supported Format?}
+    B -- No --> C[Error: Unsupported Format]
+    B -- Yes --> D{Transcription Exists?}
+    D -- Yes --> E{Clean Version Exists?}
+    D -- No --> F[Check File Size]
+    E -- Yes --> G[Skip Processing]
+    E -- No --> H[Clean Existing Transcript]
+    F --> I{Size > 25MB?}
+    I -- Yes --> J[Split File]
+    I -- No --> K[Direct Transcription]
+    J --> L[Process Splits]
+    K --> L
+    L --> M[Save Results]
+    H --> M
+    M --> N[End]
+    G --> N
 ```
 
 ## OpenAI API Interaction
 
 ```mermaid
 sequenceDiagram
-    participant Script
-    participant OpenAIClient
-    participant WhisperAPI
-    participant GPT4oMiniAPI
+    participant AP as AudioProcessor
+    participant TS as TranscriptionService
+    participant TC as TranscriptCleaner
+    participant TM as TranscriptManager
+    participant API as OpenAI API
 
-    Script->>OpenAIClient: Initialize client
-    Script->>OpenAIClient: Validate API key
-    loop For each audio chunk
-        Script->>OpenAIClient: Send audio chunk
-        OpenAIClient->>WhisperAPI: Transcribe audio
-        WhisperAPI-->>OpenAIClient: Return transcription
-        OpenAIClient-->>Script: Return transcription
-    end
-    Script->>Script: Combine chunk transcriptions (if split)
-    Script->>Script: Save transcription (JSON & TXT)
-    Script->>OpenAIClient: Send transcription for cleaning
-    OpenAIClient->>GPT4oMiniAPI: Clean transcription
-    GPT4oMiniAPI-->>OpenAIClient: Return cleaned text
-    OpenAIClient-->>Script: Return cleaned text
-    Script->>Script: Save cleaned transcription
+    AP->>TS: Process Audio File
+    TS->>API: Send to Whisper API
+    API-->>TS: Return Transcription
+    TS->>TM: Save Raw Transcript
+    TM->>TC: Request Cleaning
+    TC->>API: Send to GPT-3.5
+    API-->>TC: Return Cleaned Text
+    TC->>TM: Save Clean Version
+    TM-->>AP: Complete Processing
 ```
 
-These charts provide a visual representation of the project structure, workflow, decision-making process, and API interactions in the MP3 to Text Transcription project.
+## Core Components
 
+### AudioConfig
+- Manages configuration settings for audio processing
+- Defines size limits and supported formats
+- Stores ffmpeg/ffprobe paths
 
+### ProjectPaths
+- Handles project directory structure
+- Creates necessary directories
+- Manages file paths
 
-### Main Execution
+### AudioProcessor
+- Handles audio file operations
+- Splits large files into manageable chunks
+- Retrieves audio file information
 
-The `main()` function orchestrates the entire process, including:
+### TranscriptionService
+- Manages OpenAI API interactions
+- Handles transcription requests
+- Implements retry logic with exponential backoff
 
-1. Initializing the OpenAI client
-2. Validating the OpenAI API key
-3. Processing all MP3 and WAV files in the `data/original` directory
-4. Splitting audio files if necessary
-5. Transcribing the audio files
-6. Saving transcriptions in JSON and TXT formats
-7. Cleaning up transcriptions and saving them as separate files
-8. Processing existing transcriptions without clean versions
-9. Skipping files that have already been processed or have existing clean versions
+### TranscriptCleaner
+- Refines raw transcriptions
+- Uses GPT-3.5-turbo for text improvement
+- Maintains information accuracy while improving readability
 
-## API Key Validation
+### TranscriptManager
+- Manages transcript file operations
+- Handles file existence checks
+- Saves transcripts and metadata
 
-The script now includes an API key validation step:
-
-- Before processing any files, the script attempts to list available models using the provided API key.
-- If the API key is invalid or there are any authentication issues, the script will raise an error and stop execution.
-- This ensures that potential API key issues are caught early in the process, saving time and preventing unnecessary processing attempts.
+### AudioTranscriptionPipeline
+- Orchestrates the entire transcription process
+- Coordinates between different components
+- Provides progress feedback and error handling
 
 ## Error Handling
 
 The script includes comprehensive error handling:
 
-- Client initialization errors
-- API key validation errors
-- File not found errors
-- Transcription process errors
-- File saving errors
-- Audio splitting errors
-- Transcription cleaning errors
-- Improved handling of split file transcription failures:
-  - Each chunk is now processed independently
-  - If a chunk fails to transcribe, the script logs the error and continues with the next chunk
-  - The script ensures at least one chunk is successfully transcribed before combining results
-  - If all chunks fail, an informative exception is raised
-- Chunk size verification to prevent processing chunks larger than the API limit
-- Detailed logging of chunk transcription attempts and results
-- Specific handling for OpenAI API errors:
-  - Authentication errors
-  - Rate limit errors
-  - General API errors
-
-Each error is logged and displayed to the user with appropriate context, including specific error messages from the OpenAI API when available.
-
-## Retry Mechanism
-
-The script implements a robust retry mechanism to handle temporary failures:
-
-- The entire file transcription process can be retried up to 3 times
-- Each chunk transcription attempt uses exponential backoff for retries
-- Different wait times are implemented based on the type of error:
-  - Longer waits for rate limit errors (60 seconds base, doubling each retry)
-  - Medium waits for general API errors (10 seconds base, doubling each retry)
-  - Shorter waits for unexpected errors (5 seconds base, doubling each retry)
-- A delay of 10 seconds is added between chunk transcriptions to avoid rate limiting issues
-- If all retries fail, the script raises an informative exception and moves on to the next file
-
-This retry mechanism significantly improves the script's resilience to temporary network issues, API failures, and rate limiting.
-
-## Visual Output
-
-The script uses the Rich library to provide a visually appealing console output:
-
-- Colored text for different types of information
-- Progress bar for the transcription process
-- Panels for important information
-- Formatted display of transcription summary
+- API authentication and rate limit handling
+- File system operation error management
+- Transcription process error recovery
+- Automatic retries with exponential backoff
+- Detailed error logging and user feedback
 
 ## Customization
 
-You can customize the script by modifying the following:
+You can customize the script by modifying the following classes:
 
-- Change the `model` parameter in the `transcribe_audio_chunk` function to use a different OpenAI model.
-- Adjust the timeout settings in the `get_openai_client` function to accommodate your specific needs.
-- Modify the output formats or add additional formats in the `save_transcription` function.
-- Adjust the `MAX_SPLIT_SIZE_MB` and `MAX_SPLIT_DURATION` constants to change the thresholds for splitting audio files.
-- Modify the cleaning prompt or model in the `clean_transcription` function to adjust the coherence improvement process.
-- Adjust retry attempts and wait times in the `transcribe_audio_chunk` and `transcribe_audio` functions to fine-tune the retry mechanism.
+- `AudioConfig`: Adjust file size limits, supported formats, and paths
+- `TranscriptionService`: Change the Whisper model or API settings
+- `TranscriptCleaner`: Modify the cleaning prompt or model
+- `AudioTranscriptionPipeline`: Adjust the processing workflow
 
 ## Troubleshooting
 
 If you encounter issues:
 
-1. Ensure your OpenAI API key is correctly set in the `.env` file and is valid.
-2. Check that your input audio files are valid MP3 or WAV files and are placed in the `data/original` directory.
-3. Verify that you have sufficient credits in your OpenAI account.
-4. Check the console output and log files for any error messages. The script now provides more detailed error information, especially for API-related issues.
-5. Ensure that the ffmpeg and ffprobe paths are correctly set in the script.
-6. For large files, make sure you have enough disk space for temporary split files.
-7. If you're experiencing frequent failures, try adjusting the retry settings or adding longer delays between API calls.
-8. If you encounter persistent rate limit errors, you may need to reduce the frequency of API calls or contact OpenAI to increase your rate limits.
+1. Verify your OpenAI API key in the `.env` file
+2. Check that audio files are in supported formats
+3. Ensure ffmpeg and ffprobe paths are correct
+4. Review console output for error messages
+5. Check available disk space for split files
+6. Verify OpenAI API rate limits and credits
 
 ## Contributing
 
-Contributions to this project are welcome. Please follow these steps:
+Contributions are welcome! Please:
 
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix.
-3. Make your changes and commit them with clear, descriptive messages.
-4. Push your changes to your fork.
-5. Submit a pull request with a clear description of your changes.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request with clear description
 
 ## License
 
@@ -312,9 +258,7 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 ## Acknowledgements
 
-- [OpenAI](https://www.openai.com) for providing the Whisper model and gpt-4o-mini API
-- [python-dotenv](https://github.com/theskumar/python-dotenv) for environment variable management
-- [Rich](https://github.com/Textualize/rich) for beautiful terminal formatting
-- [httpx](https://www.python-httpx.org/) for improved HTTP client functionality
-- [FFmpeg](https://ffmpeg.org/) for audio file manipulation
-
+- OpenAI for the Whisper model and GPT-3.5-turbo
+- Rich library for terminal formatting
+- python-dotenv for environment management
+- FFmpeg for audio processing
