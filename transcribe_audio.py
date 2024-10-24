@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Set
 from dataclasses import dataclass
 from datetime import datetime
 from dotenv import load_dotenv
@@ -13,6 +13,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 import subprocess
 import time
+import re
 
 # Initialize Rich console for better output formatting
 console = Console()
@@ -30,7 +31,7 @@ class AudioConfig:
     MAX_SPLIT_SIZE_MB: int = 5
     MAX_SPLIT_DURATION: int = 600  # 10 minutes in seconds
     MAX_FILE_SIZE: int = 25 * 1024 * 1024  # 25 MB (OpenAI limit)
-    SUPPORTED_FORMATS: tuple = ('.mp3', '.wav', '.m4a')
+    SUPPORTED_FORMATS: tuple = ('.mp3', '.wav')
     FFMPEG_PATH: str = "/Users/admin/Documents/apps/ffmpeg"
     FFPROBE_PATH: str = "/Users/admin/Documents/apps/ffprobe"
 
@@ -322,6 +323,115 @@ class TranscriptManager:
 
         return txt_path, json_path
 
+    def merge_transcripts(self) -> None:
+        """Merge transcript files for all audio series"""
+        logger.info("Starting transcript merge process")
+        console.print("[cyan]Starting to merge transcript files...[/cyan]")
+
+        # Function to extract part number from filename
+        def get_part_number(filename: str) -> int:
+            match = re.search(r'part(\d+)', filename)
+            return int(match.group(1)) if match else -1
+
+        # Function to get base series name from filename
+        def get_series_name(filename: str) -> str:
+            # Remove _partNNN.txt or _partNNN.clean.txt
+            return re.sub(r'_part\d+\.(clean\.)?txt$', '', filename)
+
+        try:
+            # Get all transcript files that have parts
+            all_files = list(self.transcript_dir.glob("*part*.txt"))
+
+            # Extract unique series names
+            series_names = set()
+            for file in all_files:
+                series_name = get_series_name(file.name)
+                if series_name:
+                    series_names.add(series_name)
+
+            if not series_names:
+                logger.info("No series files found to merge")
+                console.print("[yellow]No series files found to merge[/yellow]")
+                return
+
+            logger.info(f"Found series to merge: {series_names}")
+            console.print(f"[cyan]Found {len(series_names)} series to merge[/cyan]")
+
+            # Process each series
+            for series in sorted(series_names):
+                # Merge regular transcripts
+                pattern = f"{series}_part*.txt"
+                output_file = f"{series}.txt"
+
+                # Get all matching files for this series
+                files = sorted(
+                    [f for f in self.transcript_dir.glob(pattern) if not f.name.endswith('.clean.txt')],
+                    key=lambda x: get_part_number(x.name)
+                )
+
+                if files:
+                    merged_content = []
+                    for file in files:
+                        try:
+                            with open(file, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                if content:  # Only add non-empty content
+                                    merged_content.append(content)
+                        except Exception as e:
+                            logger.error(f"Error reading file {file}: {e}")
+                            raise
+
+                    if merged_content:
+                        output_path = self.transcript_dir / output_file
+                        try:
+                            with open(output_path, 'w', encoding='utf-8') as f:
+                                f.write('\n\n'.join(merged_content))
+                            logger.info(f"Successfully created merged file: {output_path}")
+                            console.print(f"[green]Created merged file: {output_path}[/green]")
+                        except Exception as e:
+                            logger.error(f"Error writing merged file {output_path}: {e}")
+                            raise
+
+                # Merge clean transcripts
+                pattern = f"{series}_part*.clean.txt"
+                output_file = f"{series}.clean.txt"
+
+                # Get all matching files for this series
+                files = sorted(
+                    [f for f in self.transcript_dir.glob(pattern)],
+                    key=lambda x: get_part_number(x.name)
+                )
+
+                if files:
+                    merged_content = []
+                    for file in files:
+                        try:
+                            with open(file, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                if content:  # Only add non-empty content
+                                    merged_content.append(content)
+                        except Exception as e:
+                            logger.error(f"Error reading file {file}: {e}")
+                            raise
+
+                    if merged_content:
+                        output_path = self.transcript_dir / output_file
+                        try:
+                            with open(output_path, 'w', encoding='utf-8') as f:
+                                f.write('\n\n'.join(merged_content))
+                            logger.info(f"Successfully created merged file: {output_path}")
+                            console.print(f"[green]Created merged file: {output_path}[/green]")
+                        except Exception as e:
+                            logger.error(f"Error writing merged file {output_path}: {e}")
+                            raise
+
+            console.print("[green]Successfully completed transcript merge process[/green]")
+
+        except Exception as e:
+            logger.error(f"Error during transcript merge: {e}")
+            console.print(f"[red]Error during transcript merge: {str(e)}[/red]")
+            raise
+
 class AudioTranscriptionPipeline:
     """Main pipeline orchestrating the entire transcription process"""
 
@@ -487,6 +597,9 @@ def main():
 
         # After processing all audio files, clean all transcripts
         pipeline.reclean_all_transcripts()
+
+        # Merge all transcript files
+        pipeline.transcript_manager.merge_transcripts()
 
     except Exception as e:
         console.print(f"[red bold]Fatal error: {str(e)}[/red bold]")
