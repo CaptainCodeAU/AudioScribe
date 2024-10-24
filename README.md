@@ -16,6 +16,8 @@ Transform your audio files into clear, coherent text with AudioScribe. Leveragin
   - Cleaned and refined transcriptions using GPT-3.5-turbo
 - Skip processing of already transcribed files
 - Support for custom ffmpeg and ffprobe paths
+- Automatic merging of split transcripts
+- Batch transcript cleaning functionality
 
 ## Prerequisites
 
@@ -61,8 +63,8 @@ Before you begin, ensure you have met the following requirements:
 
 4. For large audio files (>25MB):
    - The script will automatically split them into smaller chunks for processing
-   - After successful splitting and verification, the original large file will be automatically deleted
-   - Only the split chunks will remain in the `data/splits` directory
+   - Each chunk will be processed individually
+   - The transcripts will be automatically merged after processing
 
 5. Detailed output, including progress information, will be displayed in the console.
 
@@ -75,20 +77,17 @@ Before you begin, ensure you have met the following requirements:
    a. It checks if the file has already been processed. If so, it skips to the next file.
    b. If the file is larger than 25MB:
       - It's automatically split into smaller chunks and saved in the `data/splits` directory
-      - After verifying the chunks were created successfully, the original file is deleted
-      - This prevents redundant storage of the same audio content
+      - Each chunk is processed individually
    c. Each chunk (or the whole file if it's small enough) is sent to the OpenAI API for transcription using the Whisper model.
    d. The script uses retry logic with exponential backoff to handle potential temporary failures.
    e. A progress bar is displayed during the transcription process, updating for each chunk in large files.
    f. The API transcribes the audio and returns the result in a detailed JSON format.
-   g. For large files, the script combines the transcriptions from all chunks.
-   h. The script saves the transcribed text and additional information in JSON and TXT formats.
-   i. The script then uses gpt-4o-mini to clean up the transcription and save it as a separate file.
-5. After processing all files in the original directory, the script processes any remaining MP3 files in the `data/splits` directory.
-6. The script then processes any text files in the `data/splits` directory, cleaning up transcriptions that don't have a clean version yet.
-7. Finally, it processes optional text files in the `data/optional_text` directory.
-8. The script skips creating clean versions for files that already have them.
-9. Detailed output, including a transcription summary, is displayed in the console throughout the process.
+   g. The script saves the transcribed text and additional information in JSON and TXT formats.
+   h. The script then uses GPT-3.5-turbo to clean up the transcription and save it as a separate file.
+5. After processing all files:
+   - The script runs a cleaning pass on any transcripts that don't have clean versions
+   - All split transcripts are automatically merged into complete files
+   - Both raw and cleaned transcripts are merged separately
 
 ## File structure
 
@@ -98,9 +97,13 @@ Before you begin, ensure you have met the following requirements:
 - `data/original/`: Directory containing input audio files (MP3 or WAV)
 - `data/splits/`: Directory containing split audio files (for large files)
 - `data/transcripts/`: Directory containing transcription files
-- `<filename>.json`: JSON output file containing detailed transcription information
-- `<filename>.txt`: Plain text output file containing the transcribed text
-- `<filename>.clean.txt`: Cleaned up version of the transcription for better coherence
+  - `<filename>.json`: JSON output file containing detailed transcription information
+  - `<filename>.txt`: Plain text output file containing the transcribed text
+  - `<filename>.clean.txt`: Cleaned up version of the transcription
+  - `<filename>_partXXX.txt`: Individual split transcripts
+  - `<filename>_partXXX.clean.txt`: Cleaned split transcripts
+  - `<filename>.txt`: Merged complete transcript
+  - `<filename>.clean.txt`: Merged complete cleaned transcript
 
 
 ---
@@ -132,7 +135,6 @@ graph TD
     A --> Q[LICENSE]
 ```
 
-
 ## File Processing Decision Tree
 
 ```mermaid
@@ -150,9 +152,10 @@ graph TD
     J --> L[Process Splits]
     K --> L
     L --> M[Save Results]
+    M --> N[Merge Splits]
     H --> M
-    M --> N[End]
-    G --> N
+    N --> O[End]
+    G --> O
 ```
 
 ## OpenAI API Interaction
@@ -207,11 +210,13 @@ sequenceDiagram
 - Manages transcript file operations
 - Handles file existence checks
 - Saves transcripts and metadata
+- Merges split transcripts
 
 ### AudioTranscriptionPipeline
 - Orchestrates the entire transcription process
 - Coordinates between different components
 - Provides progress feedback and error handling
+- Manages transcript cleaning and merging
 
 ## Error Handling
 
@@ -222,6 +227,7 @@ The script includes comprehensive error handling:
 - Transcription process error recovery
 - Automatic retries with exponential backoff
 - Detailed error logging and user feedback
+- Rich console output for better visibility
 
 ## Customization
 
