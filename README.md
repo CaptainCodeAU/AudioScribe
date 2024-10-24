@@ -7,6 +7,7 @@ Transform your audio files into clear, coherent text with AudioScribe. Leveragin
 - Transcribe MP3 and WAV audio files using OpenAI's Whisper model
 - Process all audio files in the `data/original` directory
 - Automatically handle split files in the `data/splits` directory
+- Automatic cleanup of original files after successful splitting to prevent redundancy
 - Secure API key management using environment variables
 - Save transcription results in JSON and TXT formats
 - Clean up transcriptions using gpt-4o-mini for better coherence
@@ -61,7 +62,10 @@ Before you begin, ensure you have met the following requirements:
    - `<filename>.txt`: Plain text transcription
    - `<filename>.clean.txt`: Cleaned up version of the transcription for better coherence
 
-4. For large audio files (>25MB), the script will automatically split them into smaller chunks for processing.
+4. For large audio files (>25MB):
+   - The script will automatically split them into smaller chunks for processing
+   - After successful splitting and verification, the original large file will be automatically deleted
+   - Only the split chunks will remain in the `data/splits` directory
 
 5. Detailed output, including progress information, will be displayed in the console.
 
@@ -72,7 +76,10 @@ Before you begin, ensure you have met the following requirements:
 3. It scans the `data/original` directory for MP3 and WAV files.
 4. For each audio file in the original directory:
    a. It checks if the file has already been processed. If so, it skips to the next file.
-   b. If the file is larger than 25MB, it's automatically split into smaller chunks and saved in the `data/splits` directory.
+   b. If the file is larger than 25MB:
+      - It's automatically split into smaller chunks and saved in the `data/splits` directory
+      - After verifying the chunks were created successfully, the original file is deleted
+      - This prevents redundant storage of the same audio content
    c. Each chunk (or the whole file if it's small enough) is sent to the OpenAI API for transcription using the Whisper model.
    d. The script uses retry logic with exponential backoff to handle potential temporary failures.
    e. A progress bar is displayed during the transcription process, updating for each chunk in large files.
@@ -310,3 +317,4 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 - [Rich](https://github.com/Textualize/rich) for beautiful terminal formatting
 - [httpx](https://www.python-httpx.org/) for improved HTTP client functionality
 - [FFmpeg](https://ffmpeg.org/) for audio file manipulation
+
