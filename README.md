@@ -18,42 +18,61 @@ Transform your audio files into clear, coherent text with AudioScribe. Leveragin
 - Support for custom ffmpeg and ffprobe paths
 - Automatic merging of split transcripts
 - Batch transcript cleaning functionality
+- Comprehensive test suite with pytest
 
 ## Prerequisites
 
 Before you begin, ensure you have met the following requirements:
 
-- Python 3.7 or higher
+- Python 3.13 or higher
+- `uv` package manager installed (for virtual environment and dependency management)
 - An OpenAI API key
-- ffmpeg and ffprobe installed (paths can be configured in the script)
+- ffmpeg and ffprobe installed (paths can be configured via environment variables)
 
 ## Installation
 
 1. Clone the repository:
-   ```
+   ```bash
    git clone https://github.com/yourusername/AudioScribe.git
    cd AudioScribe
    ```
 
-2. Install the required packages:
-   ```
-   pip install -r requirements.txt
+2. Create and activate a virtual environment using `uv`:
+   ```bash
+   # Create virtual environment
+   uv venv
+   # Activate virtual environment
+   source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
    ```
 
-3. Create a `.env` file in the project root and add your OpenAI API key:
+3. Install the package and development dependencies:
+   ```bash
+   # Install the package in development mode
+   uv pip install -e .
+
+   # Install development dependencies
+   uv add --dev pytest pytest-cov pyright ruff
+   ```
+
+4. Create a `.env` file in the project root by copying the example:
+   ```bash
+   cp .env.example .env
+   ```
+
+5. Update the `.env` file with your configuration:
    ```
    OPENAI_API_KEY=your_api_key_here
+   FFMPEG_PATH=/path/to/ffmpeg
+   FFPROBE_PATH=/path/to/ffprobe
    ```
-
-4. Update the `FFMPEG_PATH` and `FFPROBE_PATH` variables in the `AudioConfig` class to point to your ffmpeg and ffprobe installations.
 
 ## Usage
 
 1. Place your MP3 or WAV files in the `data/original` directory.
 
 2. Run the transcription script:
-   ```
-   python transcribe_audio.py
+   ```bash
+   python -m audioscribe.main
    ```
 
 3. The transcribed text and additional information will be saved in three formats for each audio file:
@@ -66,7 +85,56 @@ Before you begin, ensure you have met the following requirements:
    - Each chunk will be processed individually
    - The transcripts will be automatically merged after processing
 
-5. Detailed output, including progress information, will be displayed in the console.
+## Testing
+
+The project includes a comprehensive test suite using pytest. To run the tests:
+
+```bash
+# Run all tests with verbose output and duration info
+pytest -v --durations=5
+
+# Run tests with coverage report
+pytest -v --durations=0 --cov --cov-report=xml
+
+# Run linting and formatting checks
+uvx ruff check .
+uvx ruff format .
+
+# Run type checking
+uv run pyright .
+
+# Run specific test file
+pytest tests/test_audio.py
+```
+
+## Project Structure
+
+```
+AudioScribe/
+├── data/
+│   ├── original/      # Place input audio files here
+│   ├── splits/        # Temporary storage for split audio files
+│   └── transcripts/   # Output directory for transcriptions
+├── src/
+│   └── audioscribe/   # Main package directory
+│       ├── __init__.py
+│       ├── audio.py           # Audio processing functionality
+│       ├── config.py          # Configuration management
+│       ├── main.py           # Main entry point
+│       ├── pipeline.py       # Transcription pipeline
+│       ├── transcript.py     # Transcript management
+│       └── transcription.py  # OpenAI API interaction
+├── tests/
+│   ├── conftest.py           # Test fixtures
+│   ├── test_audio.py        # Audio processing tests
+│   ├── test_transcript.py   # Transcript management tests
+│   └── test_transcription.py # Transcription service tests
+├── .env.example             # Example environment variables
+├── .gitignore
+├── LICENSE
+├── README.md
+└── pyproject.toml          # Project metadata and dependencies
+```
 
 ## How it works
 
@@ -88,135 +156,6 @@ Before you begin, ensure you have met the following requirements:
    - The script runs a cleaning pass on any transcripts that don't have clean versions
    - All split transcripts are automatically merged into complete files
    - Both raw and cleaned transcripts are merged separately
-
-## File structure
-
-- `transcribe_audio.py`: Main script for audio transcription
-- `requirements.txt`: List of Python package dependencies
-- `.env`: File to store the OpenAI API key (not included in the repository)
-- `data/original/`: Directory containing input audio files (MP3 or WAV)
-- `data/splits/`: Directory containing split audio files (for large files)
-- `data/transcripts/`: Directory containing transcription files
-  - `<filename>.json`: JSON output file containing detailed transcription information
-  - `<filename>.txt`: Plain text output file containing the transcribed text
-  - `<filename>.clean.txt`: Cleaned up version of the transcription
-  - `<filename>_partXXX.txt`: Individual split transcripts
-  - `<filename>_partXXX.clean.txt`: Cleaned split transcripts
-  - `<filename>.txt`: Merged complete transcript
-  - `<filename>.clean.txt`: Merged complete cleaned transcript
-
-
----
----
-
-
-# MP3 to Text Transcription with OpenAI - Charts
-
-This file contains mermaid charts explaining various aspects of the project.
-
-## Project Structure
-
-```mermaid
-graph TD
-    A[Project Root] --> B[transcribe_audio.py]
-    A --> C[requirements.txt]
-    A --> D[.env]
-    A --> E[data/]
-    E --> F[original/]
-    E --> G[splits/]
-    E --> H[transcripts/]
-    F --> I[Input audio files]
-    G --> J[Split audio files]
-    H --> K[Transcription outputs]
-    K --> M[.json files]
-    K --> N[.txt files]
-    K --> O[.clean.txt files]
-    A --> P[.gitignore]
-    A --> Q[LICENSE]
-```
-
-## File Processing Decision Tree
-
-```mermaid
-graph TD
-    A[Input Audio File] --> B{Supported Format?}
-    B -- No --> C[Error: Unsupported Format]
-    B -- Yes --> D{Transcription Exists?}
-    D -- Yes --> E{Clean Version Exists?}
-    D -- No --> F[Check File Size]
-    E -- Yes --> G[Skip Processing]
-    E -- No --> H[Clean Existing Transcript]
-    F --> I{Size > 25MB?}
-    I -- Yes --> J[Split File]
-    I -- No --> K[Direct Transcription]
-    J --> L[Process Splits]
-    K --> L
-    L --> M[Save Results]
-    M --> N[Merge Splits]
-    H --> M
-    N --> O[End]
-    G --> O
-```
-
-## OpenAI API Interaction
-
-```mermaid
-sequenceDiagram
-    participant AP as AudioProcessor
-    participant TS as TranscriptionService
-    participant TC as TranscriptCleaner
-    participant TM as TranscriptManager
-    participant API as OpenAI API
-
-    AP->>TS: Process Audio File
-    TS->>API: Send to Whisper API
-    API-->>TS: Return Transcription
-    TS->>TM: Save Raw Transcript
-    TM->>TC: Request Cleaning
-    TC->>API: Send to GPT-3.5
-    API-->>TC: Return Cleaned Text
-    TC->>TM: Save Clean Version
-    TM-->>AP: Complete Processing
-```
-
-## Core Components
-
-### AudioConfig
-- Manages configuration settings for audio processing
-- Defines size limits and supported formats
-- Stores ffmpeg/ffprobe paths
-
-### ProjectPaths
-- Handles project directory structure
-- Creates necessary directories
-- Manages file paths
-
-### AudioProcessor
-- Handles audio file operations
-- Splits large files into manageable chunks
-- Retrieves audio file information
-
-### TranscriptionService
-- Manages OpenAI API interactions
-- Handles transcription requests
-- Implements retry logic with exponential backoff
-
-### TranscriptCleaner
-- Refines raw transcriptions
-- Uses GPT-3.5-turbo for text improvement
-- Maintains information accuracy while improving readability
-
-### TranscriptManager
-- Manages transcript file operations
-- Handles file existence checks
-- Saves transcripts and metadata
-- Merges split transcripts
-
-### AudioTranscriptionPipeline
-- Orchestrates the entire transcription process
-- Coordinates between different components
-- Provides progress feedback and error handling
-- Manages transcript cleaning and merging
 
 ## Error Handling
 
@@ -243,20 +182,13 @@ You can customize the script by modifying the following classes:
 If you encounter issues:
 
 1. Verify your OpenAI API key in the `.env` file
-2. Check that audio files are in supported formats
-3. Ensure ffmpeg and ffprobe paths are correct
+2. Check that audio files are in supported formats (MP3 or WAV)
+3. Ensure ffmpeg and ffprobe paths are correctly set in `.env`
 4. Review console output for error messages
 5. Check available disk space for split files
 6. Verify OpenAI API rate limits and credits
+7. Run the test suite to verify system functionality
 
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request with clear description
 
 ## License
 
@@ -268,3 +200,7 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 - Rich library for terminal formatting
 - python-dotenv for environment management
 - FFmpeg for audio processing
+- pytest for testing framework
+- uv for package management and virtual environments
+- ruff for linting and formatting
+- pyright for type checking
