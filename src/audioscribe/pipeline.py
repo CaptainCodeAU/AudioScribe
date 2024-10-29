@@ -4,13 +4,12 @@ import logging
 from pathlib import Path
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .audio import AudioProcessor
 from .config import AudioConfig, ProjectPaths
 from .transcript import TranscriptManager
-from .transcription import TranscriptionService, TranscriptCleaner
+from .transcription import TranscriptCleaner, TranscriptionService
 
 # Initialize Rich console for better output formatting
 console = Console()

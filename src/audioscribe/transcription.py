@@ -84,7 +84,7 @@ class TranscriptCleaner:
     def _get_base_filename(self, file_path: Path) -> str:
         """Extract base filename without the actual file extension."""
         # Get the actual file extension (e.g., .txt)
-        actual_extension = ''.join(file_path.suffixes[-1:])  # Get only the last suffix
+        actual_extension = "".join(file_path.suffixes[-1:])  # Get only the last suffix
         # Remove only the actual extension from the filename
         return file_path.name[:-len(actual_extension)] if actual_extension else file_path.name
 

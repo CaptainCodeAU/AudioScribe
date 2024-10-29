@@ -1,15 +1,13 @@
 """Tests for transcription functionality."""
 
-import os
-from pathlib import Path
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from openai import OpenAI
 
-from audioscribe.transcription import TranscriptionService, TranscriptCleaner
+from audioscribe.transcription import TranscriptCleaner, TranscriptionService
 
 
 def test_transcription_service_initialization():
@@ -18,8 +16,8 @@ def test_transcription_service_initialization():
     assert service.model == "whisper-1"
 
 
-@patch('os.getenv')
-@patch('dotenv.load_dotenv')
+@patch("os.getenv")
+@patch("dotenv.load_dotenv")
 def test_transcription_service_missing_api_key(mock_load_dotenv, mock_getenv, clean_env):
     """Test TranscriptionService initialization with missing API key."""
     # Ensure load_dotenv doesn't actually load any environment variables
@@ -56,7 +54,8 @@ def test_transcribe_file_not_found(mock_openai_client):
 
 
 def test_transcribe_file_retry_success(mock_openai_client, sample_audio_path, mock_transcript_response):
-    """Test successful transcription after retries.
+    """
+    Test successful transcription after retries.
 
     Note: The API Error log is expected here as we're testing the retry mechanism.
     The first attempt is designed to fail with an API Error, and the second attempt succeeds.
@@ -77,7 +76,8 @@ def test_transcribe_file_retry_success(mock_openai_client, sample_audio_path, mo
 
 
 def test_transcribe_file_all_retries_fail(mock_openai_client, sample_audio_path):
-    """Test transcription failing after all retries.
+    """
+    Test transcription failing after all retries.
 
     Note: The API Error logs are expected here as we're testing the failure handling.
     All attempts are designed to fail with API Errors to verify proper error handling.

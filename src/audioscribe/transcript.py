@@ -182,6 +182,56 @@ class TranscriptManager:
                             logger.error(f"Error writing merged file {output_path}: {e}")
                             raise
 
+                # Merge JSON metadata files
+                pattern = f"{series}_part*.json"
+                output_file = f"{series}.json"
+
+                # Get all matching JSON files for this series
+                json_files = sorted(
+                    [f for f in self.transcript_dir.glob(pattern)],
+                    key=lambda x: get_part_number(x.name),
+                )
+
+                if json_files:
+                    merged_metadata = {
+                        "segments": [],
+                        "language": None,
+                        "duration": 0.0,
+                        "text": "",
+                    }
+
+                    for json_file in json_files:
+                        try:
+                            with open(json_file, encoding="utf-8") as f:
+                                metadata = json.load(f)
+                                # Merge segments
+                                if "segments" in metadata:
+                                    merged_metadata["segments"].extend(metadata["segments"])
+                                # Use the first file's language
+                                if merged_metadata["language"] is None and "language" in metadata:
+                                    merged_metadata["language"] = metadata["language"]
+                                # Sum up durations
+                                if "duration" in metadata:
+                                    merged_metadata["duration"] += metadata["duration"]
+                                # Concatenate text
+                                if "text" in metadata:
+                                    if merged_metadata["text"]:
+                                        merged_metadata["text"] += "\n\n"
+                                    merged_metadata["text"] += metadata["text"]
+                        except Exception as e:
+                            logger.error(f"Error reading JSON file {json_file}: {e}")
+                            raise
+
+                    if merged_metadata["segments"]:
+                        output_path = self.transcript_dir / output_file
+                        try:
+                            with open(output_path, "w", encoding="utf-8") as f:
+                                json.dump(merged_metadata, f, indent=2, ensure_ascii=False)
+                            logger.info(f"Successfully created merged JSON file: {output_path}")
+                        except Exception as e:
+                            logger.error(f"Error writing merged JSON file {output_path}: {e}")
+                            raise
+
         except Exception as e:
             logger.error(f"Error during transcript merge: {e}")
             raise

@@ -43,6 +43,10 @@ ignore = [
     "S101",  # Use of assert detected
     "COM812",  # Missing trailing comma
     "ISC001",  # Implicitly concatenated strings on a single line
+    "S603",
+    "TRY003",
+    "TRY300",
+    # "F821",
 ]
 
 [tool.ruff.format]

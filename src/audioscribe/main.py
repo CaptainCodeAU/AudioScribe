@@ -1,7 +1,6 @@
 """Main module for AudioScribe."""
 
 import logging
-from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
@@ -44,25 +43,6 @@ def main() -> None:
 
                 # Process current file
                 pipeline.process_file(file)
-
-                # Get base name for verification (without the actual extension)
-                base_name = pipeline.transcript_manager._get_base_filename(file)
-
-                # Verify transcription files were created by checking for their existence directly
-                txt_path = pipeline.paths.TRANSCRIPTS / f"{base_name}.txt"
-                json_path = pipeline.paths.TRANSCRIPTS / f"{base_name}.json"
-                clean_txt_path = pipeline.paths.TRANSCRIPTS / f"{base_name}.clean.txt"
-
-                if not (txt_path.exists() and json_path.exists() and clean_txt_path.exists()):
-                    missing_files = []
-                    if not txt_path.exists():
-                        missing_files.append(str(txt_path))
-                    if not json_path.exists():
-                        missing_files.append(str(json_path))
-                    if not clean_txt_path.exists():
-                        missing_files.append(str(clean_txt_path))
-                    raise RuntimeError(f"Missing transcription files for {file.name}: {', '.join(missing_files)}")
-
                 console.print(f"[green]✓ Successfully completed processing {file.name}[/green]")
                 console.print("=" * 50)  # Visual separator between files
 
@@ -74,6 +54,25 @@ def main() -> None:
 
         # Merge all transcript files
         pipeline.transcript_manager.merge_transcripts()
+
+        # Verify merged transcription files after merging
+        for file in original_files:
+            base_name = pipeline.transcript_manager._get_base_filename(file)
+            txt_path = pipeline.paths.TRANSCRIPTS / f"{base_name}.txt"
+            json_path = pipeline.paths.TRANSCRIPTS / f"{base_name}.json"
+            clean_txt_path = pipeline.paths.TRANSCRIPTS / f"{base_name}.clean.txt"
+
+            if not (txt_path.exists() and json_path.exists() and clean_txt_path.exists()):
+                missing_files = []
+                if not txt_path.exists():
+                    missing_files.append(str(txt_path))
+                if not json_path.exists():
+                    missing_files.append(str(json_path))
+                if not clean_txt_path.exists():
+                    missing_files.append(str(clean_txt_path))
+                raise RuntimeError(f"Missing merged transcription files for {file.name}: {', '.join(missing_files)}")
+
+            console.print(f"[green]✓ Successfully verified merged transcripts for {file.name}[/green]")
 
     except Exception as e:
         console.print(f"[red bold]Fatal error: {e!s}[/red bold]")
