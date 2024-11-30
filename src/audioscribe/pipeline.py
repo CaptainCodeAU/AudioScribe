@@ -33,6 +33,10 @@ class AudioTranscriptionPipeline:
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
+        # Convert M4A to MP3 if necessary
+        if file_path.suffix.lower() == '.m4a':
+            file_path = self.audio_processor.convert_m4a_to_mp3(file_path)
+
         if file_path.suffix.lower() not in self.config.SUPPORTED_FORMATS:
             raise ValueError(f"Unsupported file format: {file_path.suffix}")
 

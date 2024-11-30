@@ -21,7 +21,23 @@ def main() -> None:
     try:
         pipeline = AudioTranscriptionPipeline()
 
-        # Process files in original directory first
+        # First, convert any M4A files to MP3
+        m4a_files = [
+            f for f in pipeline.paths.ORIGINAL.iterdir()
+            if f.suffix.lower() == '.m4a'
+        ]
+
+        if m4a_files:
+            console.print(f"[cyan]Found {len(m4a_files)} M4A files to convert[/cyan]")
+            for m4a_file in m4a_files:
+                try:
+                    console.print(f"[cyan]Converting {m4a_file.name} to MP3...[/cyan]")
+                    pipeline.audio_processor.convert_m4a_to_mp3(m4a_file)
+                except Exception as e:
+                    console.print(f"[red]Failed to convert {m4a_file.name}: {e!s}[/red]")
+                    logger.error(f"Failed to convert {m4a_file.name}: {e}")
+
+        # Then process files in original directory
         original_files = [
             f
             for f in pipeline.paths.ORIGINAL.iterdir()

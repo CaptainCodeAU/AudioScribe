@@ -5,21 +5,34 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict
 
 import httpx
 from dotenv import load_dotenv
 from openai import OpenAI
+from openai.types.chat import ChatCompletion
 
 logger = logging.getLogger(__name__)
 
 # OpenAI's Whisper API has a 25MB file size limit
 MAX_FILE_SIZE_MB = 25
 
+# Model configurations - using highest quality models by default
+WHISPER_MODELS = {
+    "default": "whisper-large-v3",  # Higher quality, better with accents and non-English
+    "fallback": "whisper-1",  # Good balance of accuracy and cost, as fallback
+}
+
+GPT_MODELS = {
+    "default": "gpt-4-0125-preview",  # Highest accuracy for transcript cleaning
+    "fallback": "gpt-3.5-turbo-0125",  # Good balance of performance and cost, as fallback
+}
+
 
 class TranscriptionService:
     """Handles all transcription-related operations."""
 
-    def __init__(self, model: str = "whisper-1"):
+    def __init__(self, model: str = WHISPER_MODELS["default"]):
         load_dotenv()
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -47,9 +60,20 @@ class TranscriptionService:
         for attempt in range(retries):
             try:
                 with file_path.open("rb") as audio_file:
-                    response = self.client.audio.transcriptions.create(
-                        model=self.model, file=audio_file, response_format="verbose_json"
-                    )
+                    # Set parameters based on model
+                    if self.model == WHISPER_MODELS["default"]:  # whisper-large-v3
+                        response = self.client.audio.transcriptions.create(
+                            model=self.model,
+                            file=audio_file,
+                            response_format="verbose_json",
+                            temperature=0.0,
+                        )
+                    else:  # whisper-1
+                        response = self.client.audio.transcriptions.create(
+                            model=self.model,
+                            file=audio_file,
+                            response_format="verbose_json",
+                        )
 
                     # Convert response to dict for metadata
                     response_dict = response.model_dump()
@@ -59,6 +83,7 @@ class TranscriptionService:
                         "original_filename": file_path.name,
                         "file_size": file_path.stat().st_size,
                         "transcription_timestamp": datetime.now().isoformat(),
+                        "model_used": self.model,
                     }
 
                     logger.debug(f"Successfully transcribed {file_path}")
@@ -67,6 +92,11 @@ class TranscriptionService:
             except Exception as e:
                 logger.error(f"Attempt {attempt + 1} failed for {file_path}: {e}")
                 if attempt == retries - 1:
+                    # If all retries with default model fail, try fallback model
+                    if self.model == WHISPER_MODELS["default"] and attempt == retries - 1:
+                        logger.warning(f"Retrying with fallback model {WHISPER_MODELS['fallback']}")
+                        self.model = WHISPER_MODELS["fallback"]
+                        return self.transcribe_file(file_path, retries=1)
                     raise
                 wait_time = 30 * (2**attempt)
                 time.sleep(wait_time)
@@ -77,8 +107,9 @@ class TranscriptionService:
 class TranscriptCleaner:
     """Handles cleaning and refinement of transcripts."""
 
-    def __init__(self, client: OpenAI):
+    def __init__(self, client: OpenAI, model: str = GPT_MODELS["default"]):
         self.client = client
+        self.model = model
         self.logger = logging.getLogger(__name__)
 
     def _get_base_filename(self, file_path: Path) -> str:
@@ -116,19 +147,34 @@ class TranscriptCleaner:
 
         for attempt in range(retries):
             try:
-                # Get cleaned version from GPT
-                response = self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a professional transcript editor. Clean up the text while preserving all information.",
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.3,
-                    max_tokens=4000,
-                )
+                # Set parameters based on model
+                if self.model == GPT_MODELS["fallback"]:  # gpt-3.5-turbo
+                    response: ChatCompletion = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are a professional transcript editor. Clean up the text while preserving all information.",
+                            },
+                            {"role": "user", "content": prompt},
+                        ],
+                        temperature=0.3,
+                        max_tokens=4000,
+                        response_format={"type": "text"},
+                    )
+                else:  # gpt-4
+                    response: ChatCompletion = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are a professional transcript editor. Clean up the text while preserving all information.",
+                            },
+                            {"role": "user", "content": prompt},
+                        ],
+                        temperature=0.3,
+                        max_tokens=4000,
+                    )
 
                 # Safely extract cleaned text from response
                 if (
@@ -150,6 +196,11 @@ class TranscriptCleaner:
             except Exception as e:
                 self.logger.error(f"Attempt {attempt + 1} failed for {transcript_path}: {e}")
                 if attempt == retries - 1:
+                    # If all retries with default model fail, try fallback model
+                    if self.model == GPT_MODELS["default"] and attempt == retries - 1:
+                        self.logger.warning(f"Retrying with fallback model {GPT_MODELS['fallback']}")
+                        self.model = GPT_MODELS["fallback"]
+                        return self.clean_transcript(transcript_path, retries=1)
                     raise
                 wait_time = 30 * (2**attempt)
                 time.sleep(wait_time)
