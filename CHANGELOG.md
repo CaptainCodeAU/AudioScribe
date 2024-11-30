@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Updated to use latest OpenAI models for better accuracy
-  - Now uses `whisper-large-v3` as default transcription model
+  - Optimized transcription service to use the official `whisper-1` model
   - Now uses `gpt-4-0125-preview` as default transcript cleaning model
-- Added automatic fallback mechanism to more economical models if high-quality models fail
-  - Falls back to `whisper-1` for transcription
-  - Falls back to `gpt-3.5-turbo-0125` for transcript cleaning
+  - Added automatic fallback to `gpt-3.5-turbo-0125` for transcript cleaning if needed
+- Simplified transcription service initialization by removing model selection
+- Added model information to transcription metadata
 
 ## [0.2.0] - 2024-03-19
 

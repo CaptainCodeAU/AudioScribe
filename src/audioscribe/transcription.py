@@ -17,11 +17,8 @@ logger = logging.getLogger(__name__)
 # OpenAI's Whisper API has a 25MB file size limit
 MAX_FILE_SIZE_MB = 25
 
-# Model configurations - using highest quality models by default
-WHISPER_MODELS = {
-    "default": "whisper-large-v3",  # Higher quality, better with accents and non-English
-    "fallback": "whisper-1",  # Good balance of accuracy and cost, as fallback
-}
+# Model configurations
+WHISPER_MODEL = "whisper-1"  # Only available Whisper model through API
 
 GPT_MODELS = {
     "default": "gpt-4-0125-preview",  # Highest accuracy for transcript cleaning
@@ -32,7 +29,7 @@ GPT_MODELS = {
 class TranscriptionService:
     """Handles all transcription-related operations."""
 
-    def __init__(self, model: str = WHISPER_MODELS["default"]):
+    def __init__(self):
         load_dotenv()
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -43,7 +40,7 @@ class TranscriptionService:
             max_retries=5,
             timeout=httpx.Timeout(600.0, read=300.0, write=10.0, connect=5.0),
         )
-        self.model = model
+        self.model = WHISPER_MODEL
 
     def transcribe_file(self, file_path: Path, retries: int = 3) -> tuple[str, dict]:
         """Transcribe a single audio file with retries."""
@@ -60,20 +57,11 @@ class TranscriptionService:
         for attempt in range(retries):
             try:
                 with file_path.open("rb") as audio_file:
-                    # Set parameters based on model
-                    if self.model == WHISPER_MODELS["default"]:  # whisper-large-v3
-                        response = self.client.audio.transcriptions.create(
-                            model=self.model,
-                            file=audio_file,
-                            response_format="verbose_json",
-                            temperature=0.0,
-                        )
-                    else:  # whisper-1
-                        response = self.client.audio.transcriptions.create(
-                            model=self.model,
-                            file=audio_file,
-                            response_format="verbose_json",
-                        )
+                    response = self.client.audio.transcriptions.create(
+                        model=self.model,
+                        file=audio_file,
+                        response_format="verbose_json",
+                    )
 
                     # Convert response to dict for metadata
                     response_dict = response.model_dump()
@@ -92,11 +80,6 @@ class TranscriptionService:
             except Exception as e:
                 logger.error(f"Attempt {attempt + 1} failed for {file_path}: {e}")
                 if attempt == retries - 1:
-                    # If all retries with default model fail, try fallback model
-                    if self.model == WHISPER_MODELS["default"] and attempt == retries - 1:
-                        logger.warning(f"Retrying with fallback model {WHISPER_MODELS['fallback']}")
-                        self.model = WHISPER_MODELS["fallback"]
-                        return self.transcribe_file(file_path, retries=1)
                     raise
                 wait_time = 30 * (2**attempt)
                 time.sleep(wait_time)
