@@ -32,6 +32,7 @@ INVALID_BITRATE_ERROR = "Invalid bit rate: not a valid number"
 INVALID_DURATION_ERROR = "Invalid duration: not a valid number"
 SPLIT_ERROR = "Failed to split audio file: {}"
 NO_SPLITS_ERROR = "No split files were created for {}"
+CONVERSION_ERROR = "Failed to convert audio file: {}"
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,56 @@ class AudioProcessor:
         msg = COMMAND_ERROR.format(e)
         logger.exception(msg)
         raise RuntimeError(msg) from e
+
+    def convert_m4a_to_mp3(self, file_path: Path) -> Path:
+        """
+        Convert M4A file to MP3 format using ffmpeg.
+
+        Args:
+            file_path: Path to the M4A file.
+
+        Returns:
+            Path: Path to the converted MP3 file.
+
+        Raises:
+            RuntimeError: If conversion fails.
+        """
+        if not file_path.is_file():
+            self._raise_file_not_found(file_path)
+
+        if file_path.suffix.lower() != '.m4a':
+            return file_path
+
+        output_path = file_path.with_suffix('.mp3')
+
+        # Skip if MP3 already exists
+        if output_path.exists():
+            logger.info("MP3 file already exists for %s, skipping conversion", file_path.name)
+            return output_path
+
+        logger.info("Converting %s to MP3 format", file_path.name)
+
+        cmd = [
+            self.config.FFMPEG_PATH,
+            "-i",
+            str(file_path),
+            "-codec:a",
+            "libmp3lame",
+            "-q:a",
+            "2",  # VBR quality setting (2 is high quality)
+            str(output_path)
+        ]
+
+        try:
+            self._secure_run(SubprocessConfig(cmd=cmd))
+            logger.info("Successfully converted %s to MP3", file_path.name)
+            return output_path
+        except subprocess.CalledProcessError as e:
+            msg = CONVERSION_ERROR.format(e)
+            logger.exception(msg)
+            if output_path.exists():
+                output_path.unlink()
+            raise RuntimeError(msg) from e
 
     def get_audio_info(self, file_path: Path) -> dict[str, Any]:
         """
@@ -338,6 +389,10 @@ class AudioProcessor:
 
         """
         try:
+            # Convert M4A to MP3 if necessary
+            if file_path.suffix.lower() == '.m4a':
+                file_path = self.convert_m4a_to_mp3(file_path)
+
             # Check for existing splits first
             existing_splits = self.get_existing_splits(file_path, output_dir)
             if existing_splits:
