@@ -4,7 +4,8 @@ Transform your audio files into clear, coherent text with AudioScribe. Leveragin
 
 ## Features
 
-- Transcribe MP3 and WAV audio files using OpenAI's Whisper model
+- Transcribe MP3, WAV, and M4A audio files using OpenAI's latest Whisper model
+- Automatic conversion of M4A files to MP3 format
 - Object-oriented architecture for better code organization and maintainability
 - Automatic handling of large files with smart splitting functionality
 - Rich console interface with progress indicators and colored output
@@ -13,7 +14,7 @@ Transform your audio files into clear, coherent text with AudioScribe. Leveragin
 - Multiple output formats:
   - JSON files with detailed transcription metadata
   - Raw text transcriptions
-  - Cleaned and refined transcriptions using GPT-3.5-turbo
+  - Cleaned and refined transcriptions using GPT-4 (with GPT-3.5-turbo fallback)
 - Skip processing of already transcribed files
 - Support for custom ffmpeg and ffprobe paths
 - Automatic merging of split transcripts
@@ -68,7 +69,7 @@ Before you begin, ensure you have met the following requirements:
 
 ## Usage
 
-1. Place your MP3 or WAV files in the `data/original` directory.
+1. Place your MP3, WAV, or M4A files in the `data/original` directory.
 
 2. Run the transcription script:
    ```bash
@@ -140,18 +141,19 @@ AudioScribe/
 
 1. The script initializes the OpenAI client with proper error handling and extended timeout configurations.
 2. It validates the OpenAI API key before proceeding with any transcriptions.
-3. It scans the `data/original` directory for MP3 and WAV files.
+3. It scans the `data/original` directory for MP3, WAV, and M4A files.
 4. For each audio file in the original directory:
-   a. It checks if the file has already been processed. If so, it skips to the next file.
-   b. If the file is larger than 25MB:
+   a. If the file is M4A format, it's automatically converted to MP3.
+   b. It checks if the file has already been processed. If so, it skips to the next file.
+   c. If the file is larger than 25MB:
       - It's automatically split into smaller chunks and saved in the `data/splits` directory
       - Each chunk is processed individually
-   c. Each chunk (or the whole file if it's small enough) is sent to the OpenAI API for transcription using the Whisper model.
-   d. The script uses retry logic with exponential backoff to handle potential temporary failures.
-   e. A progress bar is displayed during the transcription process, updating for each chunk in large files.
-   f. The API transcribes the audio and returns the result in a detailed JSON format.
-   g. The script saves the transcribed text and additional information in JSON and TXT formats.
-   h. The script then uses GPT-3.5-turbo to clean up the transcription and save it as a separate file.
+   d. Each chunk (or the whole file if it's small enough) is sent to the OpenAI API for transcription using the whisper-1 model.
+   e. The script uses retry logic with exponential backoff to handle potential temporary failures.
+   f. A progress bar is displayed during the transcription process, updating for each chunk in large files.
+   g. The API transcribes the audio and returns the result in a detailed JSON format.
+   h. The script saves the transcribed text and additional information in JSON and TXT formats.
+   i. The script then uses GPT-4 to clean up the transcription (with automatic fallback to GPT-3.5-turbo if needed) and save it as a separate file.
 5. After processing all files:
    - The script runs a cleaning pass on any transcripts that don't have clean versions
    - All split transcripts are automatically merged into complete files
@@ -173,8 +175,8 @@ The script includes comprehensive error handling:
 You can customize the script by modifying the following classes:
 
 - `AudioConfig`: Adjust file size limits, supported formats, and paths
-- `TranscriptionService`: Change the Whisper model or API settings
-- `TranscriptCleaner`: Modify the cleaning prompt or model
+- `TranscriptionService`: Configure API settings (model is fixed to whisper-1)
+- `TranscriptCleaner`: Modify the cleaning prompt or model preferences
 - `AudioTranscriptionPipeline`: Adjust the processing workflow
 
 ## Troubleshooting
@@ -182,13 +184,12 @@ You can customize the script by modifying the following classes:
 If you encounter issues:
 
 1. Verify your OpenAI API key in the `.env` file
-2. Check that audio files are in supported formats (MP3 or WAV)
+2. Check that audio files are in supported formats (MP3, WAV, or M4A)
 3. Ensure ffmpeg and ffprobe paths are correctly set in `.env`
 4. Review console output for error messages
 5. Check available disk space for split files
 6. Verify OpenAI API rate limits and credits
 7. Run the test suite to verify system functionality
-
 
 ## License
 
@@ -196,7 +197,7 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 ## Acknowledgements
 
-- OpenAI for the Whisper model and GPT-3.5-turbo
+- OpenAI for the Whisper and GPT models
 - Rich library for terminal formatting
 - python-dotenv for environment management
 - FFmpeg for audio processing
